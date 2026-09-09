@@ -1,0 +1,90 @@
+services:
+
+  proxy:
+    build:
+      context: .
+      target: proxy
+      network: host
+    volumes:
+      # Allowlist is read-only — the proxy process cannot modify its own rules
+      - ./config/allowlist.yaml:/opt/harness/config/allowlist.yaml:ro
+      # CA cert and mitmproxy state, shared read-only with the claude container
+      - harness_certs:/root/.mitmproxy
+    networks:
+      - internal   # reachable by the claude container
+      - external   # the only container with a route to the internet
+    environment:
+      - HARNESS_PROXY_PORT=8080
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp | grep -q ':8080' && test -f /root/.mitmproxy/mitmproxy-ca-cert.pem"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  hostports:
+    build:
+      context: .
+      target: hostports
+      network: host
+    # host-gateway resolves to the webui bridge IP, which has a real route to the host.
+    # The webui network has ip_masquerade=false so internet routing is still blocked.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      internal:
+        # Claude resolves 'host.docker.internal' to this container via DNS alias.
+        # Only ports socat is listening on are reachable — everything else is blocked.
+        aliases:
+          - host.docker.internal
+      webui: {}   # provides a routable gateway to the host machine
+    environment:
+      # Comma-separated list of host ports to expose: HOST_PORTS=5432,5672,6379
+      - HOST_PORTS=${HOST_PORTS:-}
+
+  claude:
+    build:
+      context: .
+      target: claude
+      network: host
+    depends_on:
+      proxy:
+        condition: service_healthy
+      hostports:
+        condition: service_started
+    volumes:
+      # Mounted at its own host path (not a fixed /workspace) so that
+      # Claude Code's per-project memory — keyed off the absolute working
+      # directory — stays scoped to the actual project instead of
+      # collapsing every project run through this harness into one shared
+      # bucket. run.sh sets WORKSPACE_MOUNT to the same realpath as
+      # WORKSPACE_DIR; direct `docker compose up` without run.sh falls back
+      # to the old fixed-path behavior.
+      - ${WORKSPACE_DIR:-./workspace}:${WORKSPACE_MOUNT:-/workspace}
+      - harness_certs:/certs:ro
+      - claude_config:/home/claude
+    networks:
+      - internal   # can reach proxy and hostports
+      - webui      # allows host port publishing for --web mode; no internet routing
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - HARNESS_PROXY_HOST=proxy
+      - HARNESS_PROXY_PORT=8080
+      - HARNESS_WEB_PORT=${HARNESS_WEB_PORT:-}
+    stdin_open: true
+    tty: true
+    working_dir: ${WORKSPACE_MOUNT:-/workspace}
+    command: ["claude", "--dangerously-skip-permissions"]
+
+networks:
+  internal:
+    internal: true   # no default gateway — outbound traffic is impossible
+  external: {}       # normal outbound access, used only by the proxy
+  webui:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+
+volumes:
+  harness_certs:
+  claude_config:

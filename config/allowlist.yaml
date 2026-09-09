@@ -1,0 +1,144 @@
+# Default HTTP methods when a host entry doesn't specify its own.
+# "GET" only = read-only access; add POST/PUT/DELETE/PATCH for write access.
+default_methods:
+  - GET
+
+allowlist:
+  # ── Anthropic / Claude Code core ──────────────────────────────────────────
+  - host: "api.anthropic.com"
+    methods: [GET, POST, DELETE]
+    comment: "Anthropic API — required for Claude Code"
+
+  - host: "statsig.anthropic.com"
+    methods: [GET, POST]
+    comment: "Claude Code feature flags"
+
+  - host: "mcp-proxy.anthropic.com"
+    methods: [GET, POST]
+    comment: "MCP remote server proxy"
+
+  # ── OAuth login (Pro subscription) ────────────────────────────────────────
+  # platform.claude.com hosts the actual OAuth endpoints:
+  #   /oauth/authorize, /v1/oauth/token, /oauth/code/callback
+  - host: "platform.claude.com"
+    methods: [GET, POST]
+    comment: "OAuth login for Pro subscription"
+
+  - host: "claude.ai"
+    methods: [GET, POST]
+    comment: "Claude.ai — login entry point"
+
+  - host: "*.claude.ai"
+    methods: [GET, POST]
+    comment: "Claude.ai subdomains (auth redirects, downloads)"
+
+  # ── Feature flags ─────────────────────────────────────────────────────────
+  - host: "cdn.growthbook.io"
+    methods: [GET]
+    comment: "GrowthBook — Claude Code A/B flags, may be required at startup"
+
+  # ── Status (read-only) ────────────────────────────────────────────────────
+  - host: "status.anthropic.com"
+    methods: [GET]
+    comment: "Anthropic status page"
+
+  - host: "status.claude.com"
+    methods: [GET]
+    comment: "Claude status page"
+
+  # ── Auto-updates (optional) ───────────────────────────────────────────────
+  # Remove or comment out to pin Claude Code to the version baked into the image.
+  - host: "downloads.claude.ai"
+    methods: [GET]
+    comment: "Claude Code auto-update downloads"
+
+  # ── Telemetry (optional — block by removing these entries) ────────────────
+  # Claude Code sends logs to Datadog. Remove these to disable telemetry.
+  # - host: "http-intake.logs.us5.datadoghq.com"
+  #   methods: [POST]
+  #   comment: "Datadog log ingestion (telemetry)"
+
+  - host: "*.claude.com"
+    methods: [GET, POST]
+    comment: "Claude.ai subdomains (OAuth flow)"
+
+  # ── Package registries (read-only — install but not publish) ───────────────
+  - host: "registry.npmjs.org"
+    methods: [GET]
+    comment: "npm registry"
+
+  - host: "pypi.org"
+    methods: [GET]
+    comment: "PyPI index"
+
+  - host: "files.pythonhosted.org"
+    methods: [GET]
+    comment: "PyPI file downloads"
+
+  # ── GitHub (read-only) ─────────────────────────────────────────────────────
+  - host: "github.com"
+    methods: [GET]
+    comment: "GitHub — read-only (clone, pull)"
+
+  - host: "*.github.com"
+    methods: [GET]
+    comment: "GitHub subdomains (pages, raw, etc.)"
+
+  - host: "api.github.com"
+    methods: [GET]
+    comment: "GitHub REST API — read-only"
+
+  - host: "raw.githubusercontent.com"
+    methods: [GET]
+    comment: "Raw file downloads from GitHub"
+
+  - host: "objects.githubusercontent.com"
+    methods: [GET]
+    comment: "GitHub LFS / release assets"
+
+  # ── OS package repos ───────────────────────────────────────────────────────
+  - host: "archive.ubuntu.com"
+    methods: [GET]
+    comment: "Ubuntu package repository"
+
+  - host: "security.ubuntu.com"
+    methods: [GET]
+    comment: "Ubuntu security updates"
+
+  - host: "deb.debian.org"
+    methods: [GET]
+    comment: "Debian packages"
+
+  # ── Frontend CDNs (read-only) ───────────────────────────────────────────────
+  - host: "cdn.jsdelivr.net"
+    methods: [GET]
+    comment: "jsDelivr CDN — common source for CSS/JS libraries in web projects"
+
+  - host: "unpkg.com"
+    methods: [GET]
+    comment: "unpkg CDN — common source for CSS/JS libraries in web projects"
+
+  # ── Misc ───────────────────────────────────────────────────────
+
+  - host: "brapi.dev"
+    methods: [ GET ]
+    comment: "BR API for stock prices (read only)"
+
+  - host: "*.gov.br"
+    methods: [ GET ]
+    comment: "Government sites (read only)"
+
+  - host: "api.coingecko.com"
+    methods: [ GET ]
+    comment: "CoinGecko for crypto prices"
+
+
+  # ── Example: grant write access to a specific host ─────────────────────────
+  # - host: "api.example.com"
+  #   methods: [GET, POST, PUT, PATCH, DELETE]
+  #   comment: "Internal API — full read/write"
+
+  # ── Example: read-only access to a wildcard domain ─────────────────────────
+  # - host: "*.example.com"
+  #   methods: [GET]
+  #   comment: "All example.com subdomains — read-only"
