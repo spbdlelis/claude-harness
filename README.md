@@ -107,7 +107,7 @@ claude-harness ../other-project     # relative paths work
 ### Web terminal (browser-accessible)
 
 ```bash
-claude-harness --web [port] [directory]
+claude-harness --web [port] [--tls] [directory]
 ```
 
 Starts a browser-accessible terminal via ttyd. Open `http://localhost:<port>` (or `http://<machine-ip>:<port>` from another device on the same network) to interact with Claude Code.
@@ -115,7 +115,45 @@ Starts a browser-accessible terminal via ttyd. Open `http://localhost:<port>` (o
 ```bash
 claude-harness --web .              # default port 7681
 claude-harness --web 9000 .         # custom port
+claude-harness --web --tls .        # self-signed HTTPS (needed for voice input from anything but localhost)
 ```
+
+#### Voice input
+
+The web terminal has a mic button (bottom-right) that uses the browser's built-in Web Speech API to transcribe speech.
+
+Two modes (toggle checkbox next to the mic):
+- **Auto (default)** — say the wake phrase **"hey claude"**, then your command, then **"send it"**. The command is inserted and submitted automatically (Enter included) — nothing is spoken to the terminal until the stop phrase is heard, so ambient conversation before the wake word is ignored. Edit `WAKE_WORD`/`STOP_WORD` near the top of the `harness-voice-script` block in `web/voice-index.html` to change the phrases (that block is the hand-written harness code; the rest of the file is ttyd's vendored client bundle).
+- **Manual** — every recognized phrase is inserted as pasted text without pressing Enter, so you review/edit before running it yourself.
+
+- **Browser support**: Chrome/Edge (Web Speech API isn't supported in Firefox, and only partially in Safari).
+- **Audio goes to Google's servers**, not through this container's network sandbox — recognition happens in your browser, which talks directly to Google, bypassing the proxy/allowlist entirely (nothing to configure, but worth knowing if audio privacy matters to you).
+- **Secure-context requirement**: browsers only grant microphone access on `https://` or the literal loopback names `localhost`/`127.0.0.1` — not even a `.local` mDNS hostname resolving to the same machine qualifies. Voice input works out of the box over `http://localhost:<port>`; for `http://<machine-ip-or-hostname>:<port>` from another device (or from this machine under a non-`localhost` name), start with `--tls` instead:
+
+  ```bash
+  claude-harness --web --tls .
+  ```
+
+  This generates a self-signed cert on first run (persisted in the `claude_config` volume, so it's stable across restarts) and serves both the terminal and the voice relay over HTTPS. Browsers show a one-time "connection is not private" warning per device since the cert isn't from a trusted CA — click through it (Chrome: Advanced → Proceed) and the page then loads as a genuine secure context.
+
+#### Reading responses aloud
+
+The "🔊 speak responses" checkbox (on by default) reads Claude's replies back through your speakers, using the browser's built-in text-to-speech.
+
+How it works: a Claude Code `Stop` hook (registered automatically into the persisted `settings.json` on container start) extracts just the assistant's final response text — not tool calls, code, or diffs — and posts it to a small local relay process running in the container. The web terminal page subscribes to that relay over Server-Sent Events and speaks whatever arrives. Speech recognition auto-pauses while a response is being read, so the mic doesn't pick up and re-transcribe your own speakers.
+
+This needs a second port published alongside the ttyd port (`run.sh` publishes `<port>+1` automatically) for the browser to reach the relay directly — e.g. `--web 7681` also publishes `7682`. The relay only accepts pushes (`POST /speak`) from inside the container (loopback-only); the `/events` stream it broadcasts to has no auth, same trust model as ttyd itself. With `--tls`, the relay automatically serves `/events` over HTTPS too (using the same self-signed cert as ttyd) — an `https://` page can't subscribe to a plain `http://` stream, so this isn't optional once TLS is on.
+
+**Files**: `web/voice-index.html` (the custom ttyd client page — mic button, wake-word logic, TTS playback), `scripts/voice_hook.js` (the Stop hook), `scripts/voice_relay.js` (the local relay), `scripts/ensure_voice_hook.js` (registers the hook into `settings.json` on container start).
+
+#### Known limitations
+
+This is a first pass, not a polished feature — works well enough for hands-free use, but has rough edges worth knowing about (and worth revisiting in a future session):
+
+- **Speech recognition accuracy** is inherently limited by the browser's built-in engine — wake/stop-word matching is fuzzy (checks multiple recognition alternatives and tolerates common mishearings of "claude"), but general dictation still sometimes gets words wrong, especially with accents or background noise.
+- **No punctuation support** — the Web Speech API's dictation doesn't insert punctuation from spoken words (no "comma"/"period" voice commands), so dictated commands come through as one unpunctuated run of words.
+- **TTS reads raw Markdown literally** — the Stop hook forwards the assistant's raw response text as-is, so things like `**bold**`, `` `code` ``, or code blocks get read aloud as literal asterisks/backticks/syntax rather than being stripped or handled specially. Fine for plain prose, awkward for anything formatted.
+- **No mid-dictation correction** — once auto mode starts capturing (after the wake word), everything you say is appended to the buffer until the stop word is heard; there's no voice command to pause, discard the last few words, or restart the capture. Misspoke? The only fix is to click the mic button to stop listening (which clears the buffer) and click it again to re-arm, then redo the whole phrase from the wake word.
 
 ### First run — login
 

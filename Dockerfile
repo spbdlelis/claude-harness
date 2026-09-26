@@ -121,6 +121,16 @@ RUN useradd -m -s /bin/bash -u 1000 claude \
 COPY scripts/claude_entrypoint.sh /opt/harness/entrypoint.sh
 RUN chmod +x /opt/harness/entrypoint.sh
 
+# Custom ttyd client page (stock ttyd UI + a mic button using the browser's
+# Web Speech API) served in --web mode via ttyd's -I/--index flag.
+COPY web/voice-index.html /opt/harness/voice-index.html
+
+# Voice relay: a Stop hook posts Claude's response text to a local HTTP+SSE
+# server, which the browser page subscribes to and speaks aloud.
+COPY scripts/voice_relay.js /opt/harness/voice_relay.js
+COPY scripts/voice_hook.js /opt/harness/voice_hook.js
+COPY scripts/ensure_voice_hook.js /opt/harness/ensure_voice_hook.js
+
 # Entrypoint runs as root to install the CA cert, then drops to 'claude'
 WORKDIR /workspace
 

@@ -71,6 +71,8 @@ services:
       - HARNESS_PROXY_HOST=proxy
       - HARNESS_PROXY_PORT=8080
       - HARNESS_WEB_PORT=${HARNESS_WEB_PORT:-}
+      - HARNESS_VOICE_RELAY_PORT=${HARNESS_VOICE_RELAY_PORT:-}
+      - HARNESS_WEB_TLS=${HARNESS_WEB_TLS:-}
     stdin_open: true
     tty: true
     working_dir: ${WORKSPACE_MOUNT:-/workspace}
