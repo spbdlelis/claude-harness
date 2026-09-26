@@ -72,11 +72,52 @@ set -g utf8 on
 set -g status-utf8 on
 EOF
     chown claude:claude "$TMUX_CONF"
+
+    # ── Optional TLS (needed for mic access from anything but localhost) ─────
+    # Browsers only grant microphone access on a "secure context": https://,
+    # or the literal loopback names localhost/127.0.0.1. A LAN hostname or IP
+    # (even one resolving to this same machine, e.g. a .local mDNS name)
+    # doesn't qualify, so voice input silently stays blocked there without
+    # this. Self-signed — browsers show a one-time click-through warning per
+    # device, but the page then loads as a genuine secure context.
+    TTYD_TLS_ARGS=()
+    if [ -n "${HARNESS_WEB_TLS:-}" ]; then
+        TLS_DIR="$CLAUDE_HOME/.config/harness-web-tls"
+        mkdir -p "$TLS_DIR"
+        if [ ! -f "$TLS_DIR/cert.pem" ] || [ ! -f "$TLS_DIR/key.pem" ]; then
+            echo "[harness] Generating self-signed TLS cert for the web terminal..."
+            openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+                -keyout "$TLS_DIR/key.pem" -out "$TLS_DIR/cert.pem" \
+                -subj "/CN=claude-harness" \
+                -addext "subjectAltName=DNS:localhost,DNS:*.local,IP:127.0.0.1" \
+                >/dev/null 2>&1
+        fi
+        chown -R claude:claude "$TLS_DIR"
+        chmod 600 "$TLS_DIR/key.pem"
+        TTYD_TLS_ARGS=(-S -C "$TLS_DIR/cert.pem" -K "$TLS_DIR/key.pem")
+        export HARNESS_VOICE_RELAY_TLS_CERT="$TLS_DIR/cert.pem"
+        export HARNESS_VOICE_RELAY_TLS_KEY="$TLS_DIR/key.pem"
+        echo "[harness] TLS enabled — browsers will show a one-time self-signed-cert warning to click through"
+    fi
+
+    # ── Voice relay (Stop hook -> browser text-to-speech) ─────────────────────
+    # Registers the Stop hook once (idempotent, preserves any existing
+    # settings.json content) and starts the local relay it posts to.
+    export HARNESS_VOICE_RELAY_PORT="${HARNESS_VOICE_RELAY_PORT:-$((HARNESS_WEB_PORT + 1))}"
+    gosu claude node /opt/harness/ensure_voice_hook.js "$CLAUDE_HOME/.claude/settings.json" || \
+        echo "[harness] WARNING: could not register voice-relay Stop hook (voice input still works)" >&2
+    gosu claude node /opt/harness/voice_relay.js >/home/claude/.voice_relay.log 2>&1 &
+
     # Start Claude Code in a detached tmux session
     gosu claude tmux -f "$TMUX_CONF" new-session -d -s harness "$@"
     # ttyd attaches every browser connection to the same tmux session,
-    # so all tabs share a single Claude Code instance
+    # so all tabs share a single Claude Code instance.
+    # -I serves our custom client page (stock ttyd UI + a mic button that
+    # feeds Web Speech API transcripts into the terminal as pasted text, and
+    # speaks Claude's responses back via the voice relay above).
     exec gosu claude ttyd --port "$HARNESS_WEB_PORT" --writable \
+        -I /opt/harness/voice-index.html \
+        "${TTYD_TLS_ARGS[@]}" \
         -- tmux -f "$TMUX_CONF" attach-session -t harness
 fi
 
