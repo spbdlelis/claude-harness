@@ -150,28 +150,31 @@ This needs a second port published alongside the ttyd port (`run.sh` publishes `
 
 The relay also keeps the last text it broadcast in memory and exposes `POST /replay`, which re-broadcasts it to every `/events` subscriber on request — this is what the "repeat that" voice command above calls. It's deliberately *not* loopback-restricted like `/speak`: it can only ever replay text that was already sent to every subscriber, so it grants a browser client no capability `/events` didn't already give it.
 
-**Background-tab audio**: Chrome throttles background tabs' timers, which lets speechSynthesis's own long-standing ~15s-idle stall bug resurface the moment you switch away from this tab — responses would otherwise go silent until you tab back in. Chrome exempts tabs it considers "audible" from that throttling, but only for genuinely non-silent audio, so the page loops a ~1s, low-amplitude (but not muted) white-noise clip whenever "speak responses" is checked, purely to keep the tab in that exempt state. Side effect: the browser shows its speaker/audio icon on this tab while armed, and the loop isn't perfectly silent (a very faint hiss) — this is an unsupported browser quirk, not a documented API, and Chrome could change this behavior in a future release. The clip is embedded as `KEEPALIVE_AUDIO_SRC` (a base64 WAV) near the top of the `harness-voice-script` block; regenerate it with:
+**Background-tab audio**: Chrome throttles background tabs' timers, which lets speechSynthesis's own long-standing ~15s-idle stall bug resurface the moment you switch away from this tab — responses would otherwise go silent until you tab back in. Chrome exempts tabs it considers "audible" from that throttling, and that check runs on the raw digital signal's power, not on what a human ear can perceive — so the page loops a pure ~21kHz tone (sampled at 48kHz, comfortably below its 24kHz Nyquist ceiling) whenever "speak responses" is checked *and the tab is actually hidden*, purely to keep the tab in that exempt state without being audible: comfortably above the ~20kHz upper limit of human hearing, at a healthy digital amplitude with margin above whatever silence threshold Chrome uses internally. The tone is gated on the Page Visibility API (`document.hidden`), not just the checkbox — a visible/foreground tab is never throttled in the first place, so there's nothing to protect against while you're looking at it; the loop starts the instant you tab away and stops the instant you tab back, minimizing both playback time and driver power draw. Side effects: the browser shows its speaker/audio icon on this tab while the tone is actually playing (i.e. while hidden and armed); dogs/cats can hear well past 21kHz and may notice it even though you won't; and on some very low-quality speakers/DACs, ultrasonic content can occasionally produce faint audible artifacts (intermodulation distortion) — this is an unsupported browser quirk, not a documented API, and Chrome could change this behavior in a future release. The clip is embedded as `KEEPALIVE_AUDIO_SRC` (a base64 WAV) near the top of the `harness-voice-script` block; regenerate it with:
 
 ```js
 node -e '
-const sampleRate = 8000, seconds = 1, amplitude = 700; // ~-33 dBFS peak, faint but non-zero
-const numSamples = sampleRate * seconds, dataSize = numSamples * 2;
+const sampleRate = 48000, freq = 21000, seconds = 1;
+const numSamples = sampleRate * seconds; // 21000 whole cycles in 48000 samples -> the waveform itself loops with zero phase discontinuity
+const amplitude = 12000; // ~-8.7 dBFS peak — loud enough for Chrome, silent to human ears at 21kHz
+const fadeLen = 200; // ~4.2ms fade in/out — <audio loop> restarting playback is not guaranteed sample-accurate/gapless even when the waveform is perfectly periodic; without this, a residual restart glitch is audible as a periodic click
+const dataSize = numSamples * 2;
 const buf = Buffer.alloc(44 + dataSize);
 buf.write("RIFF", 0); buf.writeUInt32LE(36 + dataSize, 4); buf.write("WAVE", 8);
 buf.write("fmt ", 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
 buf.writeUInt32LE(sampleRate, 24); buf.writeUInt32LE(sampleRate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
 buf.write("data", 36); buf.writeUInt32LE(dataSize, 40);
-let seed = 12345;
-function rand() { seed ^= seed << 13; seed |= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed |= 0; return ((seed >>> 0) / 4294967295) * 2 - 1; }
 for (let i = 0; i < numSamples; i++) {
-  const fadeLen = 200;
   let env = 1;
   if (i < fadeLen) env = i / fadeLen; else if (i > numSamples - fadeLen) env = (numSamples - i) / fadeLen;
-  buf.writeInt16LE(Math.round(rand() * amplitude * env), 44 + i * 2);
+  const sample = Math.sin(2 * Math.PI * freq * i / sampleRate) * amplitude * env;
+  buf.writeInt16LE(Math.round(sample), 44 + i * 2);
 }
 console.log("data:audio/wav;base64," + buf.toString("base64"));
 '
 ```
+
+To push the frequency closer to 24kHz, raise `sampleRate` well past `2 * freq` first (e.g. 96000 for a 24000 tone) — going right up to the Nyquist edge risks the reconstruction filter attenuating or distorting it. Keep `numSamples * freq` divisible by `sampleRate` so the underlying waveform loops with no phase discontinuity (the `fadeLen` envelope is what actually prevents an audible click at the `<audio loop>` restart, independent of that).
 
 **Files**: `web/voice-index.html` (the custom ttyd client page — mic button, wake-word logic, TTS playback), `scripts/voice_hook.js` (the Stop hook), `scripts/voice_relay.js` (the local relay), `scripts/ensure_voice_hook.js` (registers the hook into `settings.json` on container start).
 
