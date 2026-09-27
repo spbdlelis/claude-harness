@@ -23,8 +23,21 @@ const transport = useTls ? require('https') : require('http');
 
 const clients = new Set();
 
+// The last text broadcast to /events, kept so /replay can re-send it on
+// request (e.g. the browser's "repeat that" voice command) without the hook
+// re-running or Claude being involved at all.
+let lastText = '';
+
 function isLoopback(addr) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+function broadcast(text) {
+  const payload = 'data: ' + JSON.stringify({ text }) + '\n\n';
+  for (const client of clients) {
+    if (client.destroyed || client.writableEnded) { clients.delete(client); continue; }
+    try { client.write(payload); } catch (e) { clients.delete(client); }
+  }
 }
 
 const requestHandler = (req, res) => {
@@ -56,14 +69,22 @@ const requestHandler = (req, res) => {
       try { text = String(JSON.parse(body).text || ''); } catch (e) { /* ignore malformed body */ }
       text = text.trim();
       if (text) {
-        const payload = 'data: ' + JSON.stringify({ text }) + '\n\n';
-        for (const client of clients) {
-          if (client.destroyed || client.writableEnded) { clients.delete(client); continue; }
-          try { client.write(payload); } catch (e) { clients.delete(client); }
-        }
+        lastText = text;
+        broadcast(text);
       }
       res.writeHead(204).end();
     });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/replay') {
+    // Deliberately NOT loopback-restricted like /speak: this only re-sends
+    // text that was already broadcast to every /events subscriber (which
+    // itself has no auth — see the README's trust-model note), so it grants
+    // no capability a browser client didn't already have. It carries no
+    // body — nothing to POST, no arbitrary text to inject.
+    if (lastText) broadcast(lastText);
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ replayed: !!lastText }));
     return;
   }
 
