@@ -44,6 +44,20 @@
   var TTS_LANG = 'en-US';
   var TTS_RATE = 1.25; // 1.0 = normal; default voices often sound sluggish
 
+  // Chrome throttles background tabs' timers (including the anti-stall
+  // watchdog below), which lets speechSynthesis's own ~15s-idle stall bug
+  // resurface the moment you switch away from this tab — responses just go
+  // silent until you tab back in. Chrome exempts tabs it considers
+  // "audible" from that throttling, but ONLY for genuinely non-zero audio —
+  // a true-silence loop does not qualify. This is a ~1s, low-amplitude
+  // (quiet, not muted) white-noise loop that exists purely to keep this tab
+  // in that exempt state for as long as voice/TTS is armed. It has an
+  // audible-tab side effect: the browser shows its speaker icon on this
+  // tab while playing. Regenerate by re-running the WAV-synthesis snippet
+  // in the harness README's voice-feature notes if you need a different
+  // length/amplitude.
+  var KEEPALIVE_AUDIO_SRC = 'data:audio/wav;base64,UklGRqQ+AABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YYA+AAAAAP//AgD///f/CQAVABEAAwABAOn/4v/v/9b/EQDr/8v/HgDQ/ygAxv8WAPb/7f8iABoAxv8HAC0AtP/+/10AcABNAAEA7f/l/x8AGgCN/8v/+P/C/w4AjQApAMj/JwApAG//bf9TAJUAQQB7/wsA+f+7/ycARv8KAG0AqAAx/2v/k/8nAPb/IP8a/xgANwBg/3z/1wBe/y0AZQABAeUASQB6/7n/DQCs/8oADQGPAAL/zP+kAPz+LwDE/noAE/9bAA4BGf8F/1z/HAHJ/yUARQFGAbcAM/8x/6cAIwEuAIYB5/9O/27+QAB1/2YB8f5U/6YBUABjAScAUQGQABj/pAAXAar/ZwDB/j7/yAHg/hP/bQFrAaMBFf+WAFgAmv+T/uz+5gDv/vD+hv60AOX+vwGqABMCzf67Afr/kQCqALIBo/+D/4oBHf5O/tX/LP8VAEP+DP45AcQB4v2MAD7/VwL0/wr+lAG1AJEBbQJt/zD+GP4wAYEAqP2uANX9xf4LAHgBnwA4ABkBUf6KAYYAmf9DAGT/ZQE6AZ7+EQKPAlT9+f3UAIL+dP4RAX4CQP93/WYCU/17AJ79dv2NAhv/RgIb/mb98/1xAPz+Uv6iANz/cQJDAM//UP/o/Z39bAJB/0f+EQBEAgb/ZQKYAGsCm/5YAtwAzgBf/u/9HP+L/jX+lwEq/zkCEv6oAKf9Ov8OAnv+if0B/iYBJv5yAmT9JwDV/yYCHgEz/w7/IACQ/Vn/xf+vAmUAngKpAO39j/+6AW8B/f7P/awAZAH/AbwAnACzAN4A1P5zAMT+ZQK1/9oBlgKP/rz9dQITAWn+wv0C/xYBnP2q/lf/xv0XAMP/XAFS/v0B8AEx/vP+CwJ0/wD+gf34/usBBP4oAqgAsQByAjEAxgDOATn+L/+dABIBZ/1iAPD/uP1+AXH9zwDA/uIByAHKARYApP1o/mn/TQBE/kMBgwFq/xr/wf7IAcf9NQGWAW8CUv+z/mwBBgAB/2wAfwGJ/ZQB9P95ALwBff+9/eoA7QFwALv+Iv6H//0Bl/2o/7cBZf9L/rIBCgE2AawBvgA3/+//kf+S/YkCu/8AADL/4P+1AIAAbP25/p/9lAJw/8b+9wDDAW/+d/3r/jcAVgAD/ioBrv+oAkn/Q/4+/8H+uf1IATQAfQLe/gP/SABOAGH/2v0xAtH9rQFf/oYAFAJQAUMC9P5+AEf9rQEAAPr9CwKO/b//kgF7/yICd/0C/1v9yP1O/27+pAKn/gL+x/4pAOH/hf0B/xL/YADQ/XEAvgDQ/fgAHAIf/gD/UQIi//f+vP6/AA0BHACD/6T9qAFsAioB5P1F/rMBDAL0ARb/JwAjAWUB0/7U/j7+kf7V/rj+If7KAGAASQGY/zH/fP6Y/n8AwP1dAq4CHf6VAnP/F/59AJIAwwEQATT/Xv+yAML+HQCc/Z3+s/+o/q0CQgAQ/iUAoP6UAJ8Af/1v/6cAcv2T/z7/eP4IAGH+BP9N/2L97AEdAaECvwFF/3wALf7V/wX+2f7kAHoBYv8nAOkAiP7i/sr9D/9I/TYCzwDP/S3/w/30AUECIwGq/6kAzADj//v95v3o/tMAev3n/5kCPQI3Aej/6gDL/R0BewIc/5r/xgFjAHL9/P3IAV3/lQK2AHH+z/2tAeQB6v/v/Uz9tABnAAsAa/85/o//9/9w/b797/6iApL/6AFy/yf/RAHB/fX+kwDLAR8CrgCQ/hv+e/79AQwBRQDx/3kCOP4WAXX9ewGi/d7/kgAa/q4A8P/C/2ICzP4SAaT+d/5e/awC2/8g/nQBQwCDABsCQf/j/gL/tAKF/xUAQP4+ACL/C/94ANz9hP9x/YoCMv8s/zwCuALNAaH+/QBJANoAaQFAAHH9Kv9HAKQBzQGb/wYCWv9zAeAAov1ZAlX+of+WAhb/cAKG/70ArP5+AEICpf0P/8kBKv5UAJgAiwGrAmj9RP8c/lf9wv6q/9b9lgDg//T92P2RAgMBswJWAiH/wv6nABP+S/1x/xP+dQJx/YMAb/6qANkAyQBiAF8C/f/s/yv/dwHc/aQCeQFb/pwBlAFJ/qsCu/8TAQAAVP6YANsA6QFYAk39o/+o/yYBlAEmAasCfP3I/VUA8/62/bABtAJb/bz/4v+rAdYBNACm/bb/GALs/dkB7P6U/ZD/Gf5H/hwBt/5+ArQCaQHXAFz+Jf9iAX8Bmv2V/h4BJgDyAQ8CPP7D/e0B3QDGABoBa/5UARD+NgDiAPn9PQJ7Ain+lgKW/SQAbv2TAvoAdAFGAioBkADtAZwBmv+UAkQACP+u/x7/TACiAA4C6AF//tT9tv8FAvIBEv7a/bwCxP1bAE79j/01/7T+nABwAUoAngFBAPX9/wHV/RkBGAHH/YUAOf+qAUQApAB3Alz92/7G/5IBGwDWAKQAZAKQ/U//cv1w/cD/cf1YAHUAyP8N/4ECWv6b/fj/PgEf/mb+rgDN/6wBZf61/7ICSP4Z/qr+LgCjAHz9t/56/qz/V/48/k0Bi/0TALr+wQAs/p4Apv+DAmL/ff1X/nP+Dv6IAP4AXACCAbH/3QGI/dkB6P+6AI/91/28/0/+VQJJARgBEwG0Afv+hAHhAGD+MQIl/rIB4f8VAYP+lP1uApD9Ev44Adf9lwLY/rkCaf/1AWoBrP24/27+GAG4AEEAgwJM/3X+d/6mAWMBx/6nAqn/lQDe/Tr+nf04/nj+zv3J/n//a/6q/ogB/v2G/6P/d/2JAWD9k/7EAZsBXQIcAWcC0P0vAmD9Yf+vAFf+kwJkAe/9+AB+AqT+OAFV/gAAGgGU/+4BRf9Y/0f+NwCg/kAAgv6c/2oC7AFV/ekAPv9v/nAB6ACZAOwBmf3//rcAIv8OAjv+MQEj/lcCJf6Q/9IBNQJTAtgArP8q/xj/+v7xAOb+p/7O/9n/oQFq/ZABo/6IAXMCBgJTAh4CTgGC/gb/8P0UAcX9Rf7tAAsCqP0zAg4COALv/5oCXf+A/rv+1AEPAqABTf/4AEcB9wGE/7QBFAAs/vMBuv4s/pECFv7F/w/+NQLW/vD/jgGwAI/+WQDkAN3+Rf/1AaD94v5c/5z/4f47AiECov+3/un97gCkAt7/bQBSAlT/uQCX/nP/iP57/9T/owIl/4wCWP8KABgCaQJc/kv+5wCp/ZgCrAG9/ZX/xP3K/tIBdQIe/uD9dv3X/rMCNwBLAaUCRgF6/ysAQP8dAK0BtQAm/nL97QFn/i8BS/7//X0BfgEFAMD+iP7OAOYBWv0dAqsBnP61/YkA1gHDAY79ngAw/4gBqQDeAGb9kf1G/wX+7gH0/eMBiALg/8ABGP++AIIAyQEC/xP++QFQAQ0BgQD4Abj9JQGR/3/93f6k/fb9wP34AHMATgIq/pX9e//B/20Cwv08AZf+LQCC/kABxf+QApICDwCDAdsA1P7jAOL+BP/rAFUCnAFZAlr+YgEbAaQCFwKkAA//WwHs/R8CgP9W/XABuP2p/5n+GABWAowCgP2MAOr/2gERAmkClgAkAjMCCgIW/zwCX/2d/nH/yf0rAsX+fwF3AWX+2gA6/4v9A/8CAUj/9P1AApT+kv9I/isC8f3WAc/9KwDp/4kA7wB+AJoAhv7r/YUASv1mAH793f/G/5MAq/3xAbP/KwIFAGz+vv4rAXT/ggJr/v3+kf1B/ov+UgB7/Qz/rgAVAKH9o/6eAvIBcwL/AbgAewBOAoIC4gA/AHL9kv9PAgL/iwFX/yH/9wHxAer+gP41/wX/KABHAdT/qf89AlECqgEMAHkB4f0uAcv+LAE3/iP+1wG3/rYAc/4E/4MCzQERApEBOgHN/9wBY/2+/Uf/kwKb/fP+TAH4/q0CGv6//Sn/wgEvAGICuAG0/vgBdAGs/eH/5v0R/p7+bQJr/q4BWwJaAaz9fAJU/qYB1f58/YsAHAADAFD9NgKb/yEAYf23AN7/yAD0/dj+2P7C/hb+Iv89Aa39Y/0a/xn/AgJ8/03//P6s/QAAmwBPAcn/bP/nAKIACv/3/6cCrwJZApT/ngLm/ioBwf2SAm79Mf5S/eP/bgGeAvX/8v0//0n/UQAS/h0ADgHT/lz98AAb/qT/Cf7PAEMCuv4uAmb/EwDw/p39ov9XAY/+ewHO/iD/kv5s/+j91/09Atf/ngBQ/eIBg/1f/cX/Lf8d/6EAHgFsAuYAyP2M/wAC7ACA/mn/MgBh/5QBRwKZ/Wj9YP6XAUT+1v3lADr/1gEp/+4AaQKaAgr/of/A/1H9GAD8/QkBbP5h/moBlgDX/mL/Vf6L/WX+JAHF/37+dwK/AeX/+gFI/aT+7AADAjMBx/12AkX+g/2O/bYC6f7pAd0A/QBgAVQAOQEF/vb+E/9g/zD+Fv/i/ToAtQK8AJH9qP1p/YwBu//+AP8BdgFy/ZMCt/4oAO4AHQL1AdD/fQH6AE4BdP/bAFn9CAEO/swBPv/r/wUBHv+fAXkBIf4j/0ICLwGf/8X9Df/tAUT/kQLR/jEBOwBP/yf+PAAGAgkBqQHQAXn9+wBYADX/HgLu/9YARv+Q/lQAJP8oAD7+SQHeAWr+hgDTAIoBn/6I/sj9IQKWAAMCTwKU/o0CDQB5Aur9j/0RAZP+sP+s/fcATf+4ApQCXv9lACD/yP04/6QCLQJE/yf+ygE9ADsAnf5iAuoBoQAoAEb9pP9oADP/eADr/kUCcv9cAmQCYQA1/kcBsgGS/gj++P0tAHcA2v+6AHMAdf7//j0AHgKBAGsCgAL9AfT/YP7c/sj/xAGXAUkB3v3P/bwBYQAOAXP+Rf+r/xX+ZgJr/dH/gQC4/1P+bP0RAZUBkgKCAU4AnAGA/1b/xv4YAqUB0//5Ad/+8gAQ/nD+nwGr/7UBowAt/4wCyAHc/eIAUAFo/vf9uv9J/hUBUv2bAtr9NAHd/4T/SwHiANP/QQDv/5oCff/a/Tn/1/1dAdX9yv3ZAan/xP3PAHL/zgC+/0z+tQEk/tb9rgKNAogBHQCx/ij/wQHR/jMCVQHf/uP/Y/5F/pcBHwC4AXoBc//T/eoAcQFX/3QCwv+BAu4ALgFLAkYC1QELAJT90wH8AAP+PQAVAm//Yv9nALH9EwKw/U4CLP7E/rsB9f1tAE3+BgBL/Z7/t/9+/Qf/Q/+1/pn/J/+s/kn+pgC6AID9gP2N/j4CSf3b/Yv9GP8VAToAdQBzAbcCEv+FAov/CP5q/0H+egEOAOAAkAFuAjQCWf6m/jH/TAFL/dQAFwAqAT4AAAL+/aT/iAFLAEv+UgDoAWT/+f/0/+3/8/9G/hn+lP6LACIAof1YAAT+iP4XASAB/QCw/1EA9P/HAeoBrv2W/yb+d/0YAiACSgFSAPL+0P3q/r8AwgDg/wL+4/2AAqsC4P0qAGr/cQKj/qX9of1ZANYARAE4AiICSQLuAdX/gP1CABYAof+IAtH9jwHU/k4CT/6q/mYCRv52Ah0CUgBb/3X9zv/4AH39sgLF/mv/0v3J/8P+j/58/hgCFwAF/jMBVf1IAHIBSP7XAFQC8P6CAm0AwABr/Qb+SAAWANEBX/6NAFb9FwEMAKABL/99ANkARwLTAEQCggG4/RwANwKHAgEBNAKyAbsCbf5zAbsAGv+l/2n+x/1XAHkAywGwAPcAjwCu/zH+w/+uAoX9w/06AYMC5QEX/jUCHQGH/eMBVf9QAjb+PQLuABD+XgGE/if/DgFL/1/+o/1Z/br/WwH9/Xr/tgLVAUcC7AFe/RoBnf+l/xT/sP9+/ZgBRP8H/7wAfv36/nn+DgFIAZQBPgKv/3wAwf0+Avf/R//a/1cCP/73AS3/CAFa//EA2QCwAQv/Bv/D/8EB/v2BANsBYgF+ADIBMP7OANABMgK1Arn9ngLg/6QCpf5GAMcAif0l/nwBwP8bAPz/BgDY/iz/W/9N/pIBQgCUAmj/oP09/1oBrv8KAgUBZP+RAur92P84AL7//wHeAaL9pP+mAsP+IgC2/lP9dABtAWoAoAIJAHT/kAF2/rH/fwGa/13/Pv4+AjD+kwKGAU39eP+7/+EBiv82/3wCywAZ/mkBeQG1/jEA2/3FARMCGf8c/l8BIf9t/7YBXgLv/QYCngAZAccB3/2u/rMAdwJK/fj/0/8QAq3+kQK8/U0CAQBLATP/AP5+AG7+WALKAA3+sv67/c/9f/6RAMT9ZP+QAMf+zACFAXQCgP5r/1f9if2LAvH/uAGw/dT9L/93/h4Bff63AdX9AwJQAif+SwGq/s3/g/2jArQCgAFbAEcA5ABu/9b+Of6k/f4Bav3//sv+QAGM/ooBkAElARf+5/+M/l/9o/1g/0v9M/6JAWAB6gFW/XYAtf2t/mAAlgCKAbj9vwE4AVcB1/3E/WP9Jv5M/lf9SP5rAcH/kP+O/jP/1P8TACkAL/9+/VD+IQGqAvL+zAArAa8CowI1AIkBhQCo/eoAcgBuAqz9AgHp/kQCNv9mAIL+ff8wAnUCrQLHANr+3wF0/9//XQBNAbv9iwJJ//cALwFHAuoAvv2Q/bD/sf8XARMAzAB9/+f/6f+0AgkCvP25ATcAlAEcAhUBvgFw/ecBBP5r/QL+ef0cAZABSv1RAZD/IQEo/9P9cgAH/+gAkQID/8sBDwGfARoCdQBbAhX+Cv8zABMB/v+JAGz+YAGLANL93gDQANgAvf5qAjH+4P5U/i7+YACqAq8ACwI9Aoz+sP8v/zz/XP5jAgj+ff9r/WP/av60/nICDQDF/p0BhQFp/qICDAI0Aqz/6/6YAHUBsgBZAFsBZAFHAjMCgALU/8ABs/8mAF//ZgJF/3cAaP1bAq4BXQJ4/eoAIgGn/kkAGQCcArH+QQEH/ikBi/8b/wsAU/6LAm3+uQGz/sP9cwC6AYEAh/18AIb/iQJF/dv+hf1pAMP+2wHL/eD+ZAI1/7AB2P1uAun9J/6qAnkCB/7a/XkB0f1o/lsAPQBn/QsC2AGAAe39PgLX/10Cyv7CAP4BVf5VATb+5//MAYUB/QAlAJX9GP+U/u4AQgKPAsEBXf4HAPv9u/6HAYkBj/4dAVcCRP6S/vgAX/0S/tEBuwLVAbj/5//p/kT+TAIw/+YBOAJgAc3+KQHG/60BlQEsAT0AMgCtAXgBzgCR/or9Ff+r/rz9cQKD/tIBs/4V/jT/LP72/jr+oP6eAHb9lQEnAisBzAFFAFEBt/35AQIAuf4c/qf9EP+I/7D+tP64AD0BKv7X/mn+lgBSAkQB5AFpAgEC7QFZ/z4AmQEF/1sC/AFEAM7/xP5f/nv+Qv5V/oP/9P5J/nIBBf9KAbQBzv/OAZj97gEjAj4BSAFE/qX+6v+3AXAClf6OAkAAO/5tAF7+Gf4/AI8ADgI0/0n+UP/IAK3+5P7NAPYBnAAFAn8Cz/2JAAUCRf3k/Zj9xAAx/z4CtP7K/wwAlgJl/v3/l/8A/i4BGAK5/hsByP3E/bgBUv+sAL4APALp/gT+c/30AQz/HAJ3/Q8C7AGrAJMCPQFD/wv/RAET/4H92wBlAlIBdP7R/Z7+Gf51/Wv+qAA7/twBvf3PABQCtgJ7/q3++f8sAMkBJQCEAYMAbgH2AYQCbAA9Arn/JwDP/VcC0f/wAMr+3wBdAr3/t/4iAlL+qv0SALoCm/4C/1kAfP+T/RYAcgImAUoAqf8k/mP/igGR/XP96gDE/QP+vQFD/mICTf5E/UcAIwC1AA0CgQCLAo3/pgDTAd79AP9v/pYC5/5u/2kAif5T/8b/0P8S/lf+q/+6ABX+2/5yAoICtQK3/8X+0P/f/xgA3ABnAmv9OgEAApr+XwELAXz+m/1s/Qv+WQGm/QX/Zv2HArf/3AH4AaL+UwC7AGYBNgD0/W/9Of+jAGcAX/6q/58C/wBdAIgCHgB1/6wCp/15/YkCbACUApr+R/4QAsP96P3K/u8ANv9HAcP9LP6EAND/pP5GAl4CFAAw/3D9aAHn/Q3/+/9HATn/bgLHAfsADwC8/+/9sgAn/50BB/+QAhEAE/+s/RkCFgEGAP79PgKL/QEBMP6d/oX92wBNAVsBUADO/2cA9f1wAKz9pP2TAhn/3f+0/lQCSwAY/0f/EAHs/g8AgQCNABr/TP6H/20B9/1q/bn/pAD8/vX+2f90/w8CW/4ZAUb+VP5kALb+8/3OAWj+Pf7+AMv+wv23AjsCTP6OAcH9Of8jAmn/UwGNAF8CgP0dAW0Chf1d/nH/iAAWAHYAqAGbARcCfv0Z/9L/GAHOAIEA9f8DAST+Zv5yAUr9qf7Y/dj/Of/c/+7+/v2EAnMBFAKJATQBxgFxAL3+EABFAcv/BP7o/eoBJf5sARv+tP/NAPP/uAGuApH91f/F/6cC3v2CATD/mP2C/gwCKAFiAl7+hACpAX0A7P6i/vgBaf/LAXr/Nf45AZgCpv5K/mwBCwBMAOD+V/6cAIL+PgIQ/2kB/f7TALj+EQD8/10AoQJ1/soAFAC3/fX+eAJz/ycAEQB/Av4BtQJVAhb+JwKiAPsBswK3/cj9KgG2ArYCTP54/fz9WwE9AvcAAf/z/bwBff9e/bH+gP+6AO39o/0GAf0BrQHRAbD+ZQAa/2r9egJj/7f+tgKR/WgBJgDH/ez9iP2BAMoBZf0zAscBlgH8/jkB9v5RAZ0BdgHNAXj/tQA1AqACNwBtAAQA7v+U/g3+//50//H9TgE0AbT9u/20/vv+KAKVAdH+eQE+/yAClv0a/4L9NAFe/3P/JP/U/fX/tv0y/l4CuP4zAg7/zAGT/vEAwv6f/6T/kgKT/VD9uv9gAn8C/gGg/dEBYgKVAPEBnv63AloCTwJWARECYwBNAIwCLQBC/2oAEP5yAPT/0AE3AWEBtwJFAuL+QAKU/8H+VP9FAZ8CDP77/nX9wgBU/aECmQBpAHUA3v/XAAcAt/9P/74Acf0z/xH+Yv7z/joCSQALAmX/5f/H/RoAlP7b/dr+e/0WAB7/hgKEAtj9/QEr/lb+ff0E/1wBk/4d/7/9YP4VATv+eQKI/mX9DAJi/oEAef59AvH+aQGbAQACnwG1/3gBOf9i/UX/OwD+AAQC+QCKAXP+4/+//m//rP8L/lUATwIQAq8AmgERAqMCnAEQ/4EBNQL4AZn9MADD/kj+iAIg/oz/fQFZ/l0AJwAzAOb/dP8qAHL/qv6a/d8A5/2yAmwACgJxATUAzv2X/d39tQLG/yP/Af5hAUACDAKYAFABxf4u/8cBHf7lAeQA/f7l/3wB+f9HAMgAhgGyAo8AeAIA/j/+t/0H/iL+MQG7AZwBdgKH/Yr9YgH//TQBlgHJACAAbP3c/boBtQHH/1b9vQFb/o/+zv64Aa8C0P2U/bP+NgI6AeL94/6yAn3+zQAnAsQAPv5F/pX+vAHX/uD/Vf0DAkn9iP9fAE7+uQJV/bwCXP/SATwB8AAR/tkB5wC4AgL+jgCyAkYA2gE7/h0Clv2j/WgA9gEqAqL/wP6q/7AC7f5qAg4ATv2e/6L9XADG/Yv+AQHeAcT+TwEJAJYA0wDGAV4A8v5oAY8Brv3h/Zv+tP2QArn+vwFnAOr9Sv+TAT8Ahv0WAPP9bv+o/tD9/ACuAiv+UQKW/un/PgB9/doABv5L/loBr/7A/Rr/nQFRAJwCawEm/0n9GwFR/zr+iP2XAFwBrv1Q/dwBbv2A/+L+ngEYAsf+QwL4ANMA2P/TAML/5AFYANYAUf4eAoz/V/6Y/QcA4AGf//kB9AAkAB8BbgJgAgcBEgBr/kz9IAGlAun/zwB0/ioCOALC/mMA2f+9/pwBxf3NAEEC2/1mAVH+qgI2AtoBMf6mAEgC/AClAQcArgBr/R8CY/1v/ZP9Lv9LAfP9bQJY/wMAXwJy/Qn+1/82AIH/+gCwAq/+dgEJAr7+m/5//Tb/kP4O/0kAL/+t/9EB/v21/qsCFP8QAkj/Ff6//lkBRgLnARIB5QF9Adr+P/8kAH//5/7U/lj/1wDlAfcBfwEhAdUA8P7b/4ACAABU/gz/6f1qAKv+SP4r/xP+lADv/qoCOwJ5/j3+dQLEAW/96f2KAkr9UAAgAef96f3w/kcC7f1o/vb/+QA0AcH/0QFTAO3+4P/D/1D9zP0k/3X/4f+//8z+kf+wANwAD/5zAjkCdwBx/Tn/of3R/X7+HwESAfsAw/+D/l0CrQKfAXv9HQHU/X8Bgf1o/qECQQIoAS0B6v2G/QL/nP8wAaMCgP7uAEr9HgEbAiz/Nf4B/8v/zADd/TX+HwEE/7gCIf8FAcAAp/6E/oT+iP9Q/4cAsADL/hj+6f2bAU0AYQFw/l8Aj/+sArD/rAA/AOYBTgDgAXX+dAFtAgz+nv0q/4L+FwGcAnH+JwEH/kb+RwIA/pT/QAAKAJ8CJQFiArv9nQGC/5kBHQJt/awB0/2//2ABxf2n/kT/rQHMAacAUwB7/YYCXQFq/80BA/8yAbz+9AGnAAb+MwHvAUIAQP6/APv/Tf46AQkCAwEg/rj+0P5y/Tr/ev15/38C8/3HAf79+P8/AogBL/6N/xYCk/6n/cP9agD8AKv9UP8Y/t7/Sv/j/cT/tAFZAuz96AFO/mIA4v5f/XgAkQBv/X0BgQH8AXz/cwEC/rT/fwJO/Sj+KgCs/7kBDf8g/5L+oALw/bMBGP/C/msACf6k/Uv/lf4JAHgCvgFR/5P/1f3WANb9swJ2AtL+aQHT/i/+DACL/v//igIW/2n+yv1b/XL9qwJ5AWz+DAGo/fz/d/6MAAUALgJgADwBEf+Y/2QBbf+Y//EA6wFRAa/9VQL6AIr+9QAuAJYCXv1F/2cBz/9UAggBdwLV/RcB1gEbArf9Pf9jAPMBe/9jARgALgK3//QAVgE1AbQCmf9Z/6YAiwDdAf3/bv2tAZ0Akf5d/csApwK//0r+aABv/6f/xwCd/rf95v9aAlL+fAEHAf/99QBG/on/Lf5uAbP/yf4E/jMCVgIj/6YBpQDW//P9L/5eAM/98wH8/7n/SgL0/38CGP+mAj0CowLF/6AADAFCAML9sQDQAAUCHgBY/wT+bwCC/4wCgP7S/+kA5gFW/nQCv/39/fb+qgF2/kQCDP7D/nr+Av7h/yABxwFf/XQAUgLw/2UArQKI/8H/+QFi/mkA//07ASMCTgIJ/5T+S/1LAXcBJwDV/vb/nf6A/RwBw/3F/iMCsgHt/YH+F//SAW7/jAE0/ogAhABfAFUBQACOADD/yf+B/pP/gAHg/XMBVP0e/hv/IP/B/xP+swH0/UX9/f54AHUBzwEvAoL9I/8s/n3/zf5h/wkBUAFZ/6z/9v8XAPEBSQIrAcP92/76AQcA1AD+AKQAwP93/aAC6v53/3AApQJ8AjkB2wC3AOgAFgEj/rkAfQJN/dH+hAEB/68Amf/XAW4CIf6V/XT95v+7AcEBRwC7/qT/EP7Y/bX9sv15/8sBIgJy/RABcv8UAoX+oAB6AlcB0v5Z/lUAsQKaALb/UAKjAhn+hf9kAaD+CQCy/4n/vQFAAhn+RACpAikBQwCFAo0APAF7/kACv/6R/pUBf/2aAtb9VwB1Avz+lf6F/1X+g/1y/7v+uv1b/woAdQDz/0L+AQGw/+MBTADI/sIAhP5/Af39ov7HAPb+lgHf/UIAvwG0ApkAUAFb/dsBKwBh/kMCPgInAm0AiAFp/gL+GP5v/p8CDwI5/8H+o/1pAmcBnALl/tL+aAAvAEIAUgB5AAMB+v2w/cX9kwIoAa8AV/5jALr+CwGRAJACR/1UAUgBlAKuAHAC+wHS/iP+ov9hAVL/fP3U/hUBXP+yAs7+jf3aAIcBov98/zkAQQAqAv3/qf86AJMA/v9T/RX+rwEAAc/9AP9KAYkC5/2XAVT/SAJT/ob/0/4TAZT/dwCD/kv9af+A/wwAov9p/9/+2gEL/pf94P9E/yABN/71Afv9+v8BABIAAwCcARICZwCSAG/+ggKyAjX+DgGcAYX/RQHE/T3+5f5J/qD9ngDe/wD/O/6FAXYBugD6/Uf9rP3h/XX9BQJF/jf+cgGVAJQBlf3tATH+tQBf/gcCPQJlAZn9AP6e/tsA8//j/xH/s/8vAeQAwv7yAV8Cjv7q//39kgFaAucB7/5F/UP+rAAv/2X9yQGNARj/AAE+AdQAqQKVAuUBxAGL/voA4f7RALkBOAEA/pj9hADA/lMBXP23/3H9wgFS/aD9lP7hAJACWwG0/qgCHgAuABUBFP+QAKr+Rv+G/SwCsP38/i4AdP16/k/+CgLo/Zr/mP6Y/R0AuwCgAr8BU/+l/+r+hf7p/28A6v9uAD3/nQL1AK3/wv7W/W39uP9o/7IA0P/o/Zz+hf9w/6gB6/1OAYMAVv0x/p/9cwCCAH/91P26/hkBggH9/l4ChALv/tL99v6SAmoB7v1cAboAfAEzArr+uf1C/zMAMv/j/pYCR/3q/lIA7gCW/eQAcP0JANn9Sf2LAtMAnAIl/pf/V/8KACACGwCKAqX+eP9NAQkALQLG/gICMAEyAan+fP9G/00BVv5KAZQBMP97AHkCFADs/8f/Ef8aAiAAff9tAmf/kgHH/T7+xP7F/nj96wAH/hcCtAJm/qX+cP3i/0wAvwGaAIEB6/8K/p8AHP65/VcCTgLH/+gAnAHhADkBaP4oAi4CQAEKAcQApP0OAfYBtgAb/6L9yf0QAmH9xP3A/qEBDP4+AuP/9/+l/fL+MQJX/y0C3P+5AdgBUP3a/WgAMQC3/R3/l//M/ff+CgEqAb8A1/0FAX792gDC/6T/awB/APH/lgKXAq8BXgGNAin+Yv08/kf9ugFy/Z4A8/2q/sIBUACw/rsCOABMAgv+VwJs/W/9egJDAAEBGgJNAWcBqf6i/hr+XQGlAaD+6v7Z/3//3f5fAAH/oP6m/qr94gHnAXH+sgESAjP+Sf7+/RUCuf47/5sBkwGx/XYAqP9B/l0ABwLfARABiQHXABf/LgIc/7H9VgFKAMv+AQAn/9EAm/5mApr/8/2p/h0BTwIa/r8AQAHc/eT/EgIzAgYBfgFS/9T+/AElAskB8gHz/ZMAPAJ3AAABYQAx/9f+UAKH/un/xP6CAjkA2gBH/dH98f/V/6T9MAFq/+X/kQFCACwBwQCmAr4BBf7F/lH+6/2t/x3/HAHuAa4CtgGz/64AVwJM/lH9RAAQAF8A+wGi/Sv+DP/X/qkCEf9MALr9lwFmAJL+6QFMAUwC7f2jAIsCcgEzAAD/MwIV/gcAi/6gAJ/9lP4s/1b+3/1O/0oBHP9lAkf/lgEhAkL+VQG//40Caf4TAN7+Q/7h/mf/HwE//o4BGf48/sX/CwBQAXYBWf9YAZgAYv90Asj9iwLaAZn+DQLLALkBXv1h/0/+kQIyADYCewIc/uoASP7j/yP+bwE//0MBjf7K/lsAQAHbAEv+WgBLAlkBW/1W/VcBdf4wAcEBXf8CAMb/qv1u/qwBsf+V/ZEA+f+G/p4AO/6GAXT+B/7w/ooC5QHe/0gBegA5Arr9XgCQAnICqP6LAWAATv/MAVb9TwFc/0L+fP+rAWYAIwJGAR8BlQJg/cP/MAAxAvv/DQAOAc3+rwIJ/qP+4/5F/wgBlwIHAU7+RgENAdsBb//QAa8BfP8CAhYB4f2h/34AMwCX/s3+GQFKAur/Iv+dAi7/gwAg/44BkgFyAVECFAJy/dsBEQAJ/zr+oP+LAbv+IP55AT//dQFL/eQAlgA4AUv9A/5yAEf/sADm/Y79HALZ/Vb+BAH5/bX9d/3v//wBu/+J/ab+ff+MAdIALwD5/gkCuQIoAbz9twH7/vn+Fv/OAZH9nv2x/qX/DQF4/ywCq/8J/939GQJmAaoC1ABG/54ArADv/sb/mP+M/1kCbf08AOz+Ff59/0MAEQKfAJkAPAEOAtH9ev98Ai8C9f9w/XMB7/96/t8A3f2SAeP9rv0sAUsAnAI+ApkCagKwAWoCSQEx/1j+Pv/o/SkALwA+Afn9ugB7AKwCov7eAF/9CwJmAdkAy/+a/t/+MgD5ARwA5/48/jP+x/1X/jn+kP2pAGP/mP48/nYB6gHM/bb/PwLQAV4CZQCbAuv9RQC1AiD/IgH/AFoCSgHh/VMBd/1kAngCygDI/1b9DP/2/QoByP98/T//DQJgAYoA5v8Z/8D9cwG7At3/Fv4sANL98P93/7L++gEl/ncAnf8D/zcBRv2h/xP/P/5BAHH9MQFAAiYCMAJI/j4A3ABzAM//1v1Z/oIASv7zAD4BD/6kArUA2//k/iH+fP9L/l7+Wv4q/jABev+MAnn/kwLLAKv+8QFK/8n/kAKf/7796ABk/bcCdf6X/af+4gEM/tgA9gGN/z0Chf6hAlz9mgBjAnoCoAKd/+7+t/1iAIkC5wCU/zgACv9z/kUBaQCOAY/9cv+yAtr+UwHWALQBnQCS/Rz+5gCN/ygA+QAK/oP/BwAx/pL/QAK4/XICSv3I/mYBaP1DAh4CJgJQ/+wB0wEvAvkB2v+eAdv+6v/p/on/bgKZAQD/RQLx/439YADs/cUB+v/hAPP+sv9b/VQCXP4aAo//SAJyAb//eAH6AbcCVP0Z/yz+IgLCABYAiwEyAF3+QQK5/X8C0v7M/lf9/gGiAfP/M//n/zIA1AF6ApUBPv47AnwCzgGw/Xb/HgG2/a8CH/+u/jv+lgI2AEP+xQGQAYH/c/9g/jgAqf4tApgBl/6ZAOEAvwGzADD/zABXAG4B6wEW/wQBqv6TArT+SQBHAFP+2v1jAqcB7v6dAnECa/3E/t7+3/92/RYBKwGV/5ABsQHu/VQCrgJ/AIL/cP7P/xoAov+OAt3+Sv9L/50BUgH4AUIBYP6oAvr+3AAb/yL+0QBLAqIAFQF4Ad7+jADP/pf/pQCc/mz/iv9JAnj/9QBnAR3/0/8rAhUAqwD9AbwAfAJ7AJ4CmgKP/9QAeQJk/RQBwAAaAGUCRv2NAQMAMP7k/0P+PgEU/2EBBf5JAowCYv8fAJICFf6dAPj9SQIZADj+sQDJ/gj/nf2n/n8C9QE3AkP+NQGgABwAf//B/SH+rAB5/kn/Wv7rAHcCbgAV/g4CyABO/eX+9/4v/0f+kv50Ac8Br/53AOQAzwBF/o39GABIAs79kP+Z/kwA1P8D/hYBr/0o/ycCoAGRAqICqf2u/SgCFwF/ALoA1P1o/XP+tQEB/mn+eQF5/5X+iQGp/qv/hf3SAMkA8v/x/oX+BgG7/R7+J/7N/Rb/XQCJ/X7+QQD5AWEBowGs/vH+WAEu/8H+KwCI/oMB5f7u/hgBoAArAA4A6AF6/70AjgGg/mz+Lv9MAMH+WACl/pcAYP7UAZgB9v6x/nf/nQB1/1j+E/62AmAAvADnAan/IwIxAIkAsP5S/er9HAHE/uD+Wv8g/+f+0ADwATAB6QAm/pn/SwD9AdUB5gBUAjgCcwFo/RkAe/1OAIv/T/8yAKL/6gG6/8QBRAHYAI//b/6FAiL/SP8u/lz98v+2Ajv/sv+e/lL/0f5oAWX+tf2yAq7+tAGm/6QBNgHK/3sAqQK3/QX/KgESACICdAKj/UYA+/8w/gsAewHcAK0BBgA//ygBtP/QACD+1gHA/gMCfwGm/dwBxwHrAZX/cP41ALoAoQDE/4H/6f4zAcn++f+vAab9/QG5/y4AHgEY/tgAawGG/rgCGQC8ATb+WgLG/dYBPAKQ/QwBzf+a/uX9n/6UAVr+BwErAisBsP9W/ZX+dv5e/+z/BAJJ/az/ff5x/8P+yv7u/x//+wB4AeoAbf/D/yEAIQCq/nr+Hv7fACoBZwI6Ad4AoP+G/9cBTv+C/+cB1v0EAnoBl/2A/d0BTAEeAXYBMQLhAD8CTf0q/lkCH/8UAq//VgDl/v79Rf4aAU8BOAC0/vb9EQAdALIAlQL1/87+ff1h/p4AvQAs/1v+iP1pAMv/VQKa/oT/Ov61AVACrQEgAWYAGQJBAD3/NwCg/9AAtAHD/sv97/5nAIMC2wFd/jgCUP5g/mkBe/19/q/+rv4vAff+vP6aAN0BhgJ1/yIAPADW/7n+7gEOAG3/oAB4/qQAOv6YAHD+yQCQ/x7/cgGC/Q0CuP87ASX/xP3HAfT/sf7y/ZkBAQCy/579tAFz/ZwC4/6m/w3/Q//BAbkBnAJJAMP+CP9x/lcCPwKEAIwAlgKYAo0C9gEOACsCsP/ZAZ8BhwKTAP//pf5VAeYBMwAMAjcBswGxAiMBDv6oATQC0wCJAp0A/v5kABwAWgJT/mr+TABe/2r9mQFPAgj//P7yAHUBqf8pAh8A2f6w/8//hALYAb4AtAL2/ur+KQJhADH/r/8/ApoAKQJy/ggB3/89/m4AAwDs/VIB/P+d/7gC5ACmAeABxAEo//IBBv71/1b/mgFqACsAIgAhAhP+sADYAOX/DwGr/VT+2wAbAZ//hP+BAnX+bgDw/Xn/cgKgASAA+gA9AdX/Yf81/qgBVP2oAYACf/+kAer+bP8M/u3/tQIv/qIAwADd/9n+EQFQAQYAJAL3/tb+dQGv/jb+uAJxAZoCdgKNAbf/e/6l/XoB7wAdAOj+vgBx/hEChwDpAGUCGwCA/k0BSAAH/nsBGwKQ/hz+PP7q/c3+s//C/YL/lQF1AUcBtv+6/gD+PAJA/xIB8AHn/gD+6f1+/Z7/+v5l/f8AJgFxAS4CQwDbAT0AoQKT/YMCDP45/n0CdQDHAL//zv7S/1r//P6+/WX/Uf0h/scBDgGI/Zj9nf8V/5H+jwJg/p39wAH0/xz+Pv9z/t7+8f/f/bwATP7P/p4A7wFi/Y8C0P8kAnX+vQAiATn/qADoAZP+yP3g/xEB/AHFAVn/w/9wAJkCEQFL/9P9x/+XAh7+ev/+/Y3/fQJiALL+YAA+AaMABQKB/pMC4P2X/s8ALf+3/an+lwL9//QAqf4uATP+LP/SAcv+YQFp/8gA4v/i/bYCTP4S/9MAqv6YAM39ev3R/1X+NAEKAkX+/wBpARoCc/21Am4Bw/2q/3ECkv6wAtABhwEe/l0AIAG8Arj/sQFM/039Tf+n/cIAuP2V/bD/EQEtAcoBy/0nAeT94QGXAiUBqf5R/a7+MwB9/eT+mv6J/TX+rQKO/6wCjADC/mgAwP5V/w8BAAHI/xEB1f7NARkAkQEBAocCq/6HAb8AmP8zAYQBLQGsAGgAdQIR/5X+tgEE/y0CkgC2AKwBJv9o/RsAsAAq/lcAQf8oAoIBCv+NAS0BuAG/ALEBeP8oAlr9TP/F/uf/SP2n/ekBvP1+AMAB6AHm/8T9FgB//4sA6gEgAvsBnP0I/20Bqf5o/qj+KAFaAIn+4P2+/TQARP6u/q8BbP8b/t4B//78AEcA/v+KAbH/Vf2sAD4BJwKgABIApv7cAJcBCf9p/1EBfwFFAUgB6P27/jX/pP2bAfIA2P52AUz/m/9v/+n+Tf2B/4/9NP8k/9EBbgJz/zT+sP6J/nL/igKjAu/9OwACAoICZgC1/cD+O/6EAJcAtP5dAiEAdwGsAOD/+/9dAYz+wv2z/bgAZgDXAWcAHwAxACn/TQHLAIQAwQFj/U8CVQCB/aABUAHp/QsCBwGPAW/+6v2uATMApQLSAYL+/wHGAOr+OQEq/lL94P4EAAT+NgDVAS4Cjf3E/db9Lf9fAAn/P/4t/7IB/P1H/+D+wgG9AaX/4QFd//X+LgCe/3AArQJAAo7/2wCi/Uz9sgCF/t7/T/2PANr/cAFs/kL+l/4pAVf++AGoAET/XAAB/kL/5AFNAm3/AP9o/7f/zv6k/3ACl/9yAVcCBv5JAZUBj//JAZn9FgI5/67/ewE4AgsCIABPAsj9Cv/OAPIBRQFSAUX/xP2p/5MCZ/51/tP+zgDYAVn+eP2z/vUBmQFn/00Btf5JAov/6f5g/RICigIN//oAnP/HAWMBrv05Anr91//XAbL/pf7t/xn/YQLZ/p8C2P+mAkIA8/7r/2v+Kv4EAkv/c/3aAbP/BgJbAZwAggK8/cn/ef2p/0ICiQBeAQwCRP//AS7/eP62Ahz+df+q/u3+8wEFAs4Bkf8pAPD+YP6uAdsAgwLsATcB1QD+ACIArP0S/10Bd/1O/YEARwJPAG39A/7Y/m4Ctv6N/R7/agKOArT+wf/wAS//bwJ+AhH+HAA1AcEBkQJv/loAGQCU/Xz+eP9K/7wAiAJLAGwB//6NApL9TABuANwAeP/3/XwBvwGBAeH9vv9N/aH+a/1BADb+OAGR/aL9hv8C/vz+3P4qAJECSgKk/hj/P/9aAJL+qf/D/54CWv7KASkC//8R/kX+SwFCAWr/vv93/vgBrALAAM4BagCx/4b+Vv93/2sBnP3s/2X+If6gAnIBwv5LAbICkf/X/hT/2v1IAtH9Wf7vAVP/UgKpAl3+4wEm/ogAiAFzAAcB0gHrAKD+1f50AFEAHAEQANb+tP+r/SL+FQIK/wX/swAoAnEA//3C/g0CuwC4AQf+c/3zAL/9wQFyARH/IwBcAYH/IgEoAkYCy/5F/qQBLAITAJH9kP/w/bn94AEU/+n+vv/+AVEANwHQ/XEA4gGh/egAtv8AAlUC4/2q/l3+pv3WAXP/Lv7q/tX+c/0XApUC/AEh/k4CCQJjAqkCdQGeAEUBr/2o/+79av3Q/vcArf5AAlAAEf5uAmz9sP7TAQD+ff9fAZv+WgFcAtQANf5dAqICYf6P/z4BTf3qAbIBnf93//QBRgLO/d7+OP9M/rACWf2t/qwCnQAxAKwARf6Z/0wCmgBr/Wj/5v90AlcAYAC3/bj9pAAg/uP/3gHB/U0CAf56/m4ClQHVAMz/6P94/rgAvAB//QsApAJN/rMArgFB/44B6P9vAo7+OgLv/9L9jADG/wL/NwJWAZ0AagBTAFX9QwFt/Yb9y/+o/usBD/7q/lsAbQCm/zMCy/6bALb/jAFdAvL/R/2iAA3/9//pAQQAEf/FAAABPQC3/9D+pgCWAuH/i/9v/bcCkQIbAMEBnf7y/5L9g/4tAgf+A/86AAv+1v0lALQAmQEg/4wBUAGP/1sCoP5a/0wC6f5O/pQC5v/j/8v9AwAG/3T+nf3g/8b9pP9K/UD+XQKl/RgCSf3r/ocCVP0IAmD9hQFqALv9fAIF/0YAwP+wAMP+AADe/ov9ZAFF/b/+3P9XANH/QgCTAaX9p//8/VoAUQDcAWf9Yf5QAmX9Kf4S/rj+cwDBAJr97QFyAtT+MAKUAZIAJwDw/aEB1/6x/8X9av/b/oD/OAAYAfwBVQKE/9L9qf0sAhYCCf4bAeH+K/9R/jMChP44ANQAoAGFAMQBjwLz/mL9zwCC/bn9Wv1AAh4BUwJhAigBiv/2AFP++QCH/UECLAHsANMBBf+QAfD99/9yAfgBkACC/t7/QgJyAY0CPQHI/Q7/lP86/9kArv3t/+T/Zv2D/dcBpv3z/+j/SAJ7AbMBmP3BAekA8f0MASj+XwEhAdz95f4sAXsBIgEE/4oAhACB/SX/U/0bACT/twKJAZYAGQGq/cv/gv0nANX9eP81AaAC7wAv/4ACwQE//lj9RwDn/97/vQHR/bMA2f5LACcAlgLdAJ//PAJz/j8CqP6d/t4A3QAGAGMBKP5S/wIAmAHk/2AAA/4dAjn/jgAXAKoCAwBSAFj92AHbADgAPv4a/5IB9f0kAQ8ClAJp/8f+wP4qAUMCfQDO/U///f4SAk7+IgL5/xsCy/9bAQgB6v+p/TUCuAIaAer+JwJ9AdMADQAK/4cBWwDl/pP/XwDDAXn+dP8yAQ7/bQEhAMoB1AD3/bsArgIrAOH+XgGs/a8ASv3x/bsBlf+6//X/qf6z/Tj+PP6+Aaz9K/5m/5T+dP2J/wn/hP5I/cT9MAD8AbQBBQJk/7gCS/3W/qMAcf4jAAYBZQE6/wP/AQLD/ar/tf7O/a79Xv9K/Q3+vP/IAen+bf+iAgX+/v4D/4X/dgLdAZD+WP1vAWMBuP1AAUf/cwAYAq3/XwCnAKYB3f2WATICQgFs/6YBTwJTAKMBeQL1AGsCRwBD/hECkAGUAD8BKP56/psBXwB+/h//BQAi/sr/Uv34/ZQASf6bAvIBlAGMAhsCtQCqANf/oP/y/Qn+lAGF/+/9m/5//p4BWwFEArj/ev4KANn9Lf7E/9YBYQKtAUsCrv/AALn9EwL5/g8CJ/4C/13//AFA/xEBOAADAjQB3/7tAHoBIP5p/dwAb/8XAi8BawLfAa79uv1SAOIAVwA2Av7+6P5o/lD+hwIK/hIBkf1ZASD/SgBs/d79IAL5/8L9oP8bAU0AjQJ8/xICbP7QAPQAWQGC/UYAt/6A/YT+AP5ZAP3/CgGwAg8Aw/6O/Q0AZQBP/vUB1wB3/ekA0P/g/nv9L/5/Aur9r/4JAqUBvAA1AHYAqQKX/fT/TAHO/bkAqgH6AdX+Wv8hAc3+qwDAAG/9UgDLAK39eAFHAq4Bav5RAkP/pQHuAOwBkP32/20Ce/9TAOn9xP9w/6z9bAGeAY8BswHg/SEAiwJeAJMBVf4yAJz+Sf0RAbv/lf6DASQCHf4dAF8BHwBeACEABgBs/Qr/6wGH/nz+JwILAtf+S/+OAVkCYQD1/mn9egF8AbX+8gCa/pT+xADoAcr+rwEv/4YAjwIeAD3+4/91AC0BewH0/nb+GQCl/mIACP+H/Vb9tf2+AKj+cv3k/rP/yQFpANwBYv/s/8P+LwJ+AvD+h/+EAU398f5+AVT/q/1K/d3+QAIV/z3/vv5FABcAHgJe/uX/1v06Aqv98gDJ/2IBkgB6ALr9UP9XAH0AsgB4AWsB4v9KAav9nwJdAkQAAAF+ATgBtQB2/XcCtwChAJv9wv+mALf+eAFXALn+/f69Afv9HQKq/7r/8QCSAXkBVf4uAar9tv1dAuX/V/3oAFn9bwHaAFT++gCh//4AiwG1/sEAYABBAKkAUf2TAO/+XQDNAG0A8ABq/07+7v/K/RMBPP5Z/VkAAAIRADUBz/+//Rz/WgEoAZMB3/6w/l8BcwK1AJL++wG9AJoBOAKn/bsAEv6F/v3+2f9BAjn+fAGnABcCYAAMAUX+1P7b/T//aADjAZ//1P/G/qX/DgHK/nL+ywH4/hX+U/+K/w//2P7eAIb/xgFOAasBF/7jAPv/Uf92AbcBFP9GAMUBqQG4/p/+uP+4/8z+Nv9nAAP/pAASAHP/kf4I/wz/w/97AKX+0ADY/zsA/v+j/0MBPwBOAbH/Vf+6AO//G//2/9v+xADsACIBPAEe//z/LwAqAcwAQACaAPP/EgHF/5UAhv/S/yj/PQCt/53/RABhAMoA/gBU/7P/xv9rAE4AjADiALr/Ov++AN3/eP87/7YAIQCu/2EAVf+I/2r/fgDG/0cA6//I/+D/mv8zAI0AJgCr/3j/zf8PAEQA7f8wAOT/ZQAyAEMA9f+S/yUAAwDP/+X/1v82AE0ARgBEAMr/PwDM/xcAFQAOAB4AKgAmACkACgAKABwA9//0//v/CQDz//v/9v/9/wAA';
+
   // Primary wake/stop phrases, plus common ASR mishearings we also accept.
   // "Claude" in particular gets misheard often (it's not a common English
   // word to the recognizer) — add more variants here if yours differs.
@@ -51,6 +65,40 @@
   var WAKE_SYNONYMS = ['hey claude', 'hey cloud', 'hey clawed', 'hey claud', 'hey clyde', 'a claude'];
   var STOP_WORD = 'send it';
   var STOP_SYNONYMS = ['send it', 'sent it', 'send at', 'cent it'];
+  // Said mid-capture to clear whatever's been captured so far without
+  // leaving capture mode — the only correction mechanism besides stopping
+  // and re-arming the mic from scratch.
+  var DISCARD_WORD = 'scratch that';
+  var DISCARD_SYNONYMS = ['scratch that', 'scratch it', 'scratch this'];
+
+  // Spoken punctuation, since the Web Speech API's dictation never inserts
+  // any on its own. Longer/more specific phrases first so e.g. "question
+  // mark" matches before a lone "question" would (which isn't mapped, but
+  // keeps the ordering principle consistent for future additions).
+  var PUNCTUATION_RULES = [
+    [/\bnew line\b/gi, '\n'],
+    [/\bquestion mark\b/gi, '?'],
+    [/\bexclamation (?:mark|point)\b/gi, '!'],
+    [/\bopen paren(?:thesis)?\b/gi, '('],
+    [/\bclose paren(?:thesis)?\b/gi, ')'],
+    [/\bfull stop\b/gi, '.'],
+    [/\bcomma\b/gi, ','],
+    [/\bperiod\b/gi, '.'],
+    [/\bcolon\b/gi, ':'],
+    [/\bsemicolon\b/gi, ';'],
+    [/\bhyphen\b/gi, '-'],
+    [/\bdash\b/gi, '-'],
+  ];
+
+  function applyPunctuation(text) {
+    PUNCTUATION_RULES.forEach(function (rule) {
+      text = text.replace(rule[0], rule[1]);
+    });
+    text = text.replace(/[ \t]+([,.!?;:])/g, '$1'); // no space before punctuation
+    text = text.replace(/([,.!?;:])(?=[^\s,.!?;:])/g, '$1 '); // one space after, if missing — but not between adjacent punctuation (e.g. "!?" should stay glued, not become "! ?")
+    text = text.replace(/[ \t]{2,}/g, ' ');
+    return text.trim();
+  }
 
   function init() {
     var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -154,6 +202,13 @@
     var capturing = false;
     var buffer = '';
 
+    // Reassigned below (inside the TTS-feature-detection block) to the real
+    // implementations once we know speechSynthesis/the relay are actually
+    // available. Safe no-ops otherwise — called unconditionally from
+    // start()/stop() and the checkbox handler regardless of TTS support.
+    var startKeepalive = function () {};
+    var stopKeepalive = function () {};
+
     function resetCapture() {
       capturing = false;
       buffer = '';
@@ -186,8 +241,9 @@
 
       if (!modeCheckbox.checked) {
         // Manual mode: paste every final phrase, never auto-submit.
-        pasteIntoTerminal(topText);
-        showStatus('Inserted: "' + topText.trim() + '" — press Enter to run it', 3000);
+        var manualText = applyPunctuation(topText);
+        pasteIntoTerminal(manualText);
+        showStatus('Inserted: "' + manualText.trim() + '" — press Enter to run it', 3000);
         return;
       }
 
@@ -203,9 +259,19 @@
         showStatus('Heard wake word — capturing command… say "' + STOP_WORD + '" to send it');
       }
 
+      var discardMatch = findPhraseAcrossAlternatives(result, DISCARD_SYNONYMS);
+      if (discardMatch) {
+        buffer = '';
+        showStatus('Discarded — still capturing… say your command, then "' + STOP_WORD + '"');
+        return;
+      }
+
       var stopMatch = findPhraseAcrossAlternatives(result, STOP_SYNONYMS);
       if (!stopMatch) {
-        var chunk = workingText.trim();
+        // Converted immediately (not just at final send) so the "Capturing:
+        // …" preview reflects real punctuation as you speak it, not the raw
+        // spoken words.
+        var chunk = applyPunctuation(workingText.trim());
         if (chunk) buffer += (buffer ? ' ' : '') + chunk;
         showStatus('Capturing: ' + buffer);
         return;
@@ -218,9 +284,12 @@
       var beforeStop = stopMatch.text.toLowerCase() === workingText.toLowerCase()
         ? workingText.slice(0, stopMatch.index)
         : stopMatch.text.slice(0, stopMatch.index);
-      var lastChunk = beforeStop.trim();
+      var lastChunk = applyPunctuation(beforeStop.trim());
       if (lastChunk) buffer += (buffer ? ' ' : '') + lastChunk;
-      var command = buffer.trim();
+      // Buffer segments are already punctuated per-chunk above; this final
+      // pass is just cross-chunk cleanup (e.g. a stray space a join
+      // introduced between two adjacent punctuation marks).
+      var command = applyPunctuation(buffer.trim());
       resetCapture();
 
       if (command) {
@@ -307,6 +376,43 @@
         }
       }, 5000);
 
+      // Keepalive loop (see KEEPALIVE_AUDIO_SRC above for why it has to be
+      // genuinely audible, not silent): keeps this tab in Chrome's
+      // "audible" state so the pause/resume watchdog above — and
+      // speechSynthesis itself — keep running on schedule instead of being
+      // throttled the moment this tab is backgrounded. Lifecycle follows
+      // the "speak responses" checkbox, independent of whether the mic is
+      // listening, since TTS playback doesn't depend on that.
+      var keepaliveAudio = new Audio(KEEPALIVE_AUDIO_SRC);
+      keepaliveAudio.loop = true;
+      keepaliveAudio.volume = 0.2; // quiet, but must stay non-zero to register as audible
+      var keepaliveWanted = false;
+
+      function startKeepaliveImpl() {
+        if (!ttsCheckbox.checked) return;
+        keepaliveWanted = true;
+        keepaliveAudio.play().catch(function () {
+          // Blocked by autoplay policy (no user gesture on this page yet) —
+          // the document-level listener below retries on the first one.
+        });
+      }
+      function stopKeepaliveImpl() {
+        keepaliveWanted = false;
+        keepaliveAudio.pause();
+      }
+      startKeepalive = startKeepaliveImpl;
+      stopKeepalive = stopKeepaliveImpl;
+
+      ['pointerdown', 'keydown'].forEach(function (type) {
+        document.addEventListener(type, function () {
+          if (keepaliveWanted && keepaliveAudio.paused) keepaliveAudio.play().catch(function () {});
+        }, { capture: true });
+      });
+
+      ttsCheckbox.addEventListener('change', function () {
+        if (ttsCheckbox.checked) startKeepalive(); else stopKeepalive();
+      });
+
       function attemptSpeak(text, wasListening, isRetry) {
         window.speechSynthesis.cancel();
         var utter = new SpeechSynthesisUtterance(text);
@@ -375,12 +481,15 @@
         ttsCheckbox.checked = false;
         ttsCheckbox.disabled = true;
       }
+
+      startKeepalive(); // best-effort now; the gesture listener above catches the common case where this is blocked pre-interaction
     }
 
     function start() {
       listening = true;
       btn.classList.add('listening');
       showStatus(modeCheckbox.checked ? 'Armed — say "' + WAKE_WORD + '" to start a command' : 'Listening...');
+      startKeepalive(); // clicking the mic button is itself a user gesture — a reliable point to unblock playback
       try {
         recognition.start();
       } catch (e) {

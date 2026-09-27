@@ -123,8 +123,10 @@ claude-harness --web --tls .        # self-signed HTTPS (needed for voice input 
 The web terminal has a mic button (bottom-right) that uses the browser's built-in Web Speech API to transcribe speech.
 
 Two modes (toggle checkbox next to the mic):
-- **Auto (default)** — say the wake phrase **"hey claude"**, then your command, then **"send it"**. The command is inserted and submitted automatically (Enter included) — nothing is spoken to the terminal until the stop phrase is heard, so ambient conversation before the wake word is ignored. Edit `WAKE_WORD`/`STOP_WORD` near the top of the `harness-voice-script` block in `web/voice-index.html` to change the phrases (that block is the hand-written harness code; the rest of the file is ttyd's vendored client bundle).
+- **Auto (default)** — say the wake phrase **"hey claude"**, then your command, then **"send it"**. The command is inserted and submitted automatically (Enter included) — nothing is spoken to the terminal until the stop phrase is heard, so ambient conversation before the wake word is ignored. Say **"scratch that"** at any point while capturing to clear what's been captured so far without leaving capture mode — useful if you misspoke partway through. Edit `WAKE_WORD`/`STOP_WORD`/`DISCARD_WORD` near the top of the `harness-voice-script` block in `web/voice-index.html` to change the phrases (that block is the hand-written harness code; the rest of the file is ttyd's vendored client bundle).
 - **Manual** — every recognized phrase is inserted as pasted text without pressing Enter, so you review/edit before running it yourself.
+
+**Spoken punctuation** (both modes) — since the Web Speech API doesn't insert punctuation on its own, say the word for it: "comma", "period" (or "full stop"), "question mark", "exclamation mark"/"point", "colon", "semicolon", "hyphen"/"dash", "open/close paren(thesis)", or "new line". These are substituted into real punctuation (with spacing cleaned up) right before the command is inserted. Edit `PUNCTUATION_RULES` in the same script block to add more.
 
 - **Browser support**: Chrome/Edge (Web Speech API isn't supported in Firefox, and only partially in Safari).
 - **Audio goes to Google's servers**, not through this container's network sandbox — recognition happens in your browser, which talks directly to Google, bypassing the proxy/allowlist entirely (nothing to configure, but worth knowing if audio privacy matters to you).
@@ -140,20 +142,45 @@ Two modes (toggle checkbox next to the mic):
 
 The "🔊 speak responses" checkbox (on by default) reads Claude's replies back through your speakers, using the browser's built-in text-to-speech.
 
-How it works: a Claude Code `Stop` hook (registered automatically into the persisted `settings.json` on container start) extracts just the assistant's final response text — not tool calls, code, or diffs — and posts it to a small local relay process running in the container. The web terminal page subscribes to that relay over Server-Sent Events and speaks whatever arrives. Speech recognition auto-pauses while a response is being read, so the mic doesn't pick up and re-transcribe your own speakers.
+How it works: a Claude Code `Stop` hook (registered automatically into the persisted `settings.json` on container start) extracts just the assistant's final response text — not tool calls, code, or diffs — strips common Markdown syntax (bold/italic, inline code, headers, links, list markers, etc.) so it reads as plain prose instead of literal symbols, and posts it to a small local relay process running in the container. The web terminal page subscribes to that relay over Server-Sent Events and speaks whatever arrives. Speech recognition auto-pauses while a response is being read, so the mic doesn't pick up and re-transcribe your own speakers.
 
 This needs a second port published alongside the ttyd port (`run.sh` publishes `<port>+1` automatically) for the browser to reach the relay directly — e.g. `--web 7681` also publishes `7682`. The relay only accepts pushes (`POST /speak`) from inside the container (loopback-only); the `/events` stream it broadcasts to has no auth, same trust model as ttyd itself. With `--tls`, the relay automatically serves `/events` over HTTPS too (using the same self-signed cert as ttyd) — an `https://` page can't subscribe to a plain `http://` stream, so this isn't optional once TLS is on.
+
+**Background-tab audio**: Chrome throttles background tabs' timers, which lets speechSynthesis's own long-standing ~15s-idle stall bug resurface the moment you switch away from this tab — responses would otherwise go silent until you tab back in. Chrome exempts tabs it considers "audible" from that throttling, but only for genuinely non-silent audio, so the page loops a ~1s, low-amplitude (but not muted) white-noise clip whenever "speak responses" is checked, purely to keep the tab in that exempt state. Side effect: the browser shows its speaker/audio icon on this tab while armed, and the loop isn't perfectly silent (a very faint hiss) — this is an unsupported browser quirk, not a documented API, and Chrome could change this behavior in a future release. The clip is embedded as `KEEPALIVE_AUDIO_SRC` (a base64 WAV) near the top of the `harness-voice-script` block; regenerate it with:
+
+```js
+node -e '
+const sampleRate = 8000, seconds = 1, amplitude = 700; // ~-33 dBFS peak, faint but non-zero
+const numSamples = sampleRate * seconds, dataSize = numSamples * 2;
+const buf = Buffer.alloc(44 + dataSize);
+buf.write("RIFF", 0); buf.writeUInt32LE(36 + dataSize, 4); buf.write("WAVE", 8);
+buf.write("fmt ", 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+buf.writeUInt32LE(sampleRate, 24); buf.writeUInt32LE(sampleRate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+buf.write("data", 36); buf.writeUInt32LE(dataSize, 40);
+let seed = 12345;
+function rand() { seed ^= seed << 13; seed |= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed |= 0; return ((seed >>> 0) / 4294967295) * 2 - 1; }
+for (let i = 0; i < numSamples; i++) {
+  const fadeLen = 200;
+  let env = 1;
+  if (i < fadeLen) env = i / fadeLen; else if (i > numSamples - fadeLen) env = (numSamples - i) / fadeLen;
+  buf.writeInt16LE(Math.round(rand() * amplitude * env), 44 + i * 2);
+}
+console.log("data:audio/wav;base64," + buf.toString("base64"));
+'
+```
 
 **Files**: `web/voice-index.html` (the custom ttyd client page — mic button, wake-word logic, TTS playback), `scripts/voice_hook.js` (the Stop hook), `scripts/voice_relay.js` (the local relay), `scripts/ensure_voice_hook.js` (registers the hook into `settings.json` on container start).
 
 #### Known limitations
 
-This is a first pass, not a polished feature — works well enough for hands-free use, but has rough edges worth knowing about (and worth revisiting in a future session):
+This is a first pass, not a polished feature — works well enough for hands-free use, but has rough edges worth knowing about:
 
-- **Speech recognition accuracy** is inherently limited by the browser's built-in engine — wake/stop-word matching is fuzzy (checks multiple recognition alternatives and tolerates common mishearings of "claude"), but general dictation still sometimes gets words wrong, especially with accents or background noise.
-- **No punctuation support** — the Web Speech API's dictation doesn't insert punctuation from spoken words (no "comma"/"period" voice commands), so dictated commands come through as one unpunctuated run of words.
-- **TTS reads raw Markdown literally** — the Stop hook forwards the assistant's raw response text as-is, so things like `**bold**`, `` `code` ``, or code blocks get read aloud as literal asterisks/backticks/syntax rather than being stripped or handled specially. Fine for plain prose, awkward for anything formatted.
-- **No mid-dictation correction** — once auto mode starts capturing (after the wake word), everything you say is appended to the buffer until the stop word is heard; there's no voice command to pause, discard the last few words, or restart the capture. Misspoke? The only fix is to click the mic button to stop listening (which clears the buffer) and click it again to re-arm, then redo the whole phrase from the wake word.
+- **Speech recognition accuracy** is inherently limited by the browser's built-in engine — wake/stop-word matching is fuzzy (checks multiple recognition alternatives and tolerates common mishearings of "claude"), but general dictation still sometimes gets words wrong, especially with accents or background noise. Not fixable from this codebase; the fix would be swapping in a different ASR service entirely.
+
+Addressed since the first pass:
+- ~~No punctuation support~~ — see "Spoken punctuation" above.
+- ~~TTS reads raw Markdown literally~~ — the Stop hook now strips Markdown before speaking (see above).
+- ~~No mid-dictation correction~~ — see the "scratch that" discard command above.
 
 ### First run — login
 
