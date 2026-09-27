@@ -42,6 +42,15 @@ export SSL_CERT_FILE="$CLAUDE_CA_CERT"
 export CURL_CA_BUNDLE="$CLAUDE_CA_CERT"
 export GIT_SSL_CAINFO="$CLAUDE_CA_CERT"
 
+# apt ignores http_proxy/https_proxy env vars — it needs its own directive,
+# or a runtime `apt-get install` (e.g. adding a missing dev tool mid-session)
+# tries a direct connection and hangs forever against the internal-only
+# network instead of going through the proxy like every other tool here.
+cat > /etc/apt/apt.conf.d/99-harness-proxy.conf <<EOF
+Acquire::http::Proxy "http://$PROXY_HOST:$PROXY_PORT";
+Acquire::https::Proxy "http://$PROXY_HOST:$PROXY_PORT";
+EOF
+
 echo "[harness] Proxy: $http_proxy"
 
 # ── Restore Claude config from backup if main file is missing ─────────────────
