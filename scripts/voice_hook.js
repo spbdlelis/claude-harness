@@ -86,6 +86,25 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Strips common Markdown syntax so TTS reads prose instead of literal
+// asterisks/backticks/hashes. Not a full parser — just the constructs
+// Claude's responses actually use.
+function stripMarkdown(text) {
+  return text
+    .replace(/```[^\n]*\n?/g, '') // code fence markers (keep the code content)
+    .replace(/`([^`]*)`/g, '$1') // inline code
+    .replace(/^#{1,6}\s+/gm, '') // headers
+    .replace(/^\s*>\s?/gm, '') // blockquotes
+    .replace(/^\s*[-*+]\s+/gm, '') // bullet list markers
+    .replace(/^\s*\d+\.\s+/gm, '') // numbered list markers
+    .replace(/^\s*-{3,}\s*$/gm, '') // horizontal rules
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links
+    .replace(/(\*\*\*|___)(.*?)\1/g, '$2') // bold+italic
+    .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
+    .replace(/(\*|_)(.*?)\1/g, '$2') // italic
+    .replace(/~~(.*?)~~/g, '$1'); // strikethrough
+}
+
 // The relay can be momentarily unreachable right after a restart (the
 // browser's EventSource takes a couple seconds to reconnect too) — retry a
 // few times rather than silently dropping the one message that lands in
@@ -119,7 +138,7 @@ async function post(port, text) {
       const attempt = extractLatestResponse(transcriptPath);
       if (attempt.length > text.length) text = attempt;
     }
-    if (text) await post(port, text);
+    if (text) await post(port, stripMarkdown(text));
   } catch (e) {
     // swallow — a hook must never break the session
   }
