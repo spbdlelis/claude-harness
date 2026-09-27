@@ -105,7 +105,7 @@ EOF
     # settings.json content) and starts the local relay it posts to.
     export HARNESS_VOICE_RELAY_PORT="${HARNESS_VOICE_RELAY_PORT:-$((HARNESS_WEB_PORT + 1))}"
     gosu claude node /opt/harness/ensure_voice_hook.js "$CLAUDE_HOME/.claude/settings.json" || \
-        echo "[harness] WARNING: could not register voice-relay Stop hook (voice input still works)" >&2
+        echo "[harness] WARNING: could not register voice-relay hooks (voice input still works)" >&2
     gosu claude node /opt/harness/voice_relay.js >/home/claude/.voice_relay.log 2>&1 &
 
     # Start Claude Code in a detached tmux session

@@ -1,28 +1,16 @@
 #!/usr/bin/env node
-// Claude Code "Stop" hook: extracts the assistant's final response text for
-// the turn that just ended and forwards it to the local voice relay, which
-// the browser page speaks via speechSynthesis. Never throws — a hook error
-// must not interrupt the interactive session, so every failure path is a
-// silent no-op.
+// Claude Code "Stop" hook: extracts the assistant's full response text for
+// the turn that just ended (every text segment since the last real user
+// prompt) and forwards it to the local voice relay as *replay-only* text —
+// each segment was already spoken live as it streamed, by the
+// "MessageDisplay" hook (voice_message_hook.js), so this hook's only job now
+// is making the whole turn available to "repeat that" as one piece, not to
+// speak it again. Never throws — a hook error must not interrupt the
+// interactive session, so every failure path is a silent no-op.
 'use strict';
 
 const fs = require('fs');
-
-// Mirrors voice_relay.js's own TLS switch: with --tls, the relay listens
-// over HTTPS, so a plain http.request() here just times out silently
-// against the TLS handshake it doesn't speak (self-signed, so also needs
-// rejectUnauthorized: false — this is a loopback-only connection).
-const useTls = !!(process.env.HARNESS_VOICE_RELAY_TLS_CERT && process.env.HARNESS_VOICE_RELAY_TLS_KEY);
-const transport = useTls ? require('https') : require('http');
-
-function readStdin() {
-  return new Promise((resolve) => {
-    let data = '';
-    process.stdin.on('data', (c) => { data += c; });
-    process.stdin.on('end', () => resolve(data));
-    setTimeout(() => resolve(data), 2000).unref();
-  });
-}
+const { stripMarkdown, delay, runVoiceHook } = require('./voice_common');
 
 // A real user prompt (as opposed to a tool_result fed back as a "user" role
 // entry mid-turn) has a plain-string content, or an array containing a text
@@ -62,84 +50,19 @@ function extractLatestResponse(transcriptPath) {
   return segments.join('\n\n').trim();
 }
 
-function postOnce(port, body) {
-  return new Promise((resolve) => {
-    const req = transport.request(
-      {
-        host: '127.0.0.1',
-        port,
-        path: '/speak',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-        timeout: 2000,
-        rejectUnauthorized: false,
-      },
-      (res) => { res.resume(); resolve(true); }
-    );
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.end(body);
-  });
-}
+runVoiceHook(async (payload, speak) => {
+  const transcriptPath = payload.transcript_path;
+  if (!transcriptPath) return;
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Strips common Markdown syntax so TTS reads prose instead of literal
-// asterisks/backticks/hashes. Not a full parser — just the constructs
-// Claude's responses actually use.
-function stripMarkdown(text) {
-  return text
-    .replace(/```[^\n]*\n?/g, '') // code fence markers (keep the code content)
-    .replace(/`([^`]*)`/g, '$1') // inline code
-    .replace(/^#{1,6}\s+/gm, '') // headers
-    .replace(/^\s*>\s?/gm, '') // blockquotes
-    .replace(/^\s*[-*+]\s+/gm, '') // bullet list markers
-    .replace(/^\s*\d+\.\s+/gm, '') // numbered list markers
-    .replace(/^\s*-{3,}\s*$/gm, '') // horizontal rules
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links
-    .replace(/(\*\*\*|___)(.*?)\1/g, '$2') // bold+italic
-    .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
-    .replace(/(\*|_)(.*?)\1/g, '$2') // italic
-    .replace(/~~(.*?)~~/g, '$1'); // strikethrough
-}
-
-// The relay can be momentarily unreachable right after a restart (the
-// browser's EventSource takes a couple seconds to reconnect too) — retry a
-// few times rather than silently dropping the one message that lands in
-// that gap.
-async function post(port, text) {
-  const body = JSON.stringify({ text });
-  const delays = [300, 800, 1500];
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
-    if (await postOnce(port, body)) return;
-    if (attempt < delays.length) await delay(delays[attempt]);
+  // Claude Code spawns this hook right as the turn ends, but the final
+  // transcript write can land a few dozen ms *after* that — reading too
+  // early silently misses the last (often most important) text segment.
+  // Re-read a few times, keeping the longest result seen.
+  let text = '';
+  for (const wait of [0, 150, 350, 600]) {
+    if (wait) await delay(wait);
+    const attempt = extractLatestResponse(transcriptPath);
+    if (attempt.length > text.length) text = attempt;
   }
-}
-
-(async () => {
-  try {
-    const port = parseInt(process.env.HARNESS_VOICE_RELAY_PORT || '', 10);
-    if (!port) return; // not running in --web mode, nothing to relay to
-
-    const raw = await readStdin();
-    const payload = JSON.parse(raw || '{}');
-    const transcriptPath = payload.transcript_path;
-    if (!transcriptPath) return;
-
-    // Claude Code spawns this hook right as the turn ends, but the final
-    // transcript write can land a few dozen ms *after* that — reading too
-    // early silently misses the last (often most important) text segment.
-    // Re-read a few times, keeping the longest result seen.
-    let text = '';
-    for (const wait of [0, 150, 350, 600]) {
-      if (wait) await delay(wait);
-      const attempt = extractLatestResponse(transcriptPath);
-      if (attempt.length > text.length) text = attempt;
-    }
-    if (text) await post(port, stripMarkdown(text));
-  } catch (e) {
-    // swallow — a hook must never break the session
-  }
-})();
+  if (text) await speak(undefined, stripMarkdown(text));
+});

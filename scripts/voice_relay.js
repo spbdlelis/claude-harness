@@ -66,11 +66,26 @@ const requestHandler = (req, res) => {
     req.on('data', (chunk) => { body += chunk; if (body.length > 1e6) req.destroy(); });
     req.on('end', () => {
       let text = '';
-      try { text = String(JSON.parse(body).text || ''); } catch (e) { /* ignore malformed body */ }
-      text = text.trim();
+      let replayText = '';
+      try {
+        const parsed = JSON.parse(body);
+        text = String(parsed.text || '').trim();
+        replayText = String(parsed.replayText || '').trim();
+      } catch (e) { /* ignore malformed body */ }
       if (text) {
-        lastText = text;
+        // `replayText`, when given, is a fuller version of what's being
+        // spoken now (e.g. a plan's full text vs. its short announcement) —
+        // it's what "repeat that" re-sends later, kept separate from what's
+        // actually broadcast (spoken) at this moment.
+        lastText = replayText || text;
         broadcast(text);
+      } else if (replayText) {
+        // No `text`: update what "repeat that" replays without speaking
+        // anything live. Used at the end of a turn to make the whole turn
+        // replayable, after each piece of it was already spoken as it
+        // streamed (see voice_message_hook.js) — speaking it again here
+        // would just repeat the same content back to back.
+        lastText = replayText;
       }
       res.writeHead(204).end();
     });

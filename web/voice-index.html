@@ -418,6 +418,12 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
     };
 
     var pausedForSpeech = false;
+    // FIFO queue so back-to-back announcements (e.g. a permission request
+    // immediately followed by another) speak in full, one after another,
+    // instead of each new one cutting the previous one off mid-sentence.
+    var speechQueue = [];
+    var speaking = false;
+    var queueWasListening = false;
 
     recognition.onend = function () {
       if (listening && !pausedForSpeech) {
@@ -529,8 +535,14 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
         if (ttsCheckbox.checked) startKeepalive(); else stopKeepalive();
       });
 
-      function attemptSpeak(text, wasListening, isRetry) {
-        window.speechSynthesis.cancel();
+      function attemptSpeak(text, isRetry) {
+        // Only clear the engine when recovering from a stall below — a fresh
+        // queued item never needs to cancel anything: drainSpeechQueue only
+        // starts one once the previous utterance's onend/onerror already
+        // fired, so nothing is in flight. (An unconditional cancel() here
+        // used to cut announcements off mid-sentence whenever a new one
+        // arrived while the previous was still speaking.)
+        if (isRetry) window.speechSynthesis.cancel();
         var utter = new SpeechSynthesisUtterance(text);
         utter.lang = TTS_LANG;
         utter.rate = TTS_RATE;
@@ -539,17 +551,11 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
           voices.find(function (v) { return v.lang && v.lang.indexOf(TTS_LANG.split('-')[0]) === 0; });
         if (voice) utter.voice = voice;
         var started = false;
-        function finish() {
-          if (wasListening) {
-            pausedForSpeech = false;
-            try { recognition.start(); } catch (e) {}
-          }
-        }
         utter.onstart = function () { started = true; };
-        utter.onend = finish;
+        utter.onend = drainSpeechQueue;
         utter.onerror = function (e) {
           console.error('[voice] speech synthesis error:', e.error);
-          finish();
+          drainSpeechQueue();
         };
         window.speechSynthesis.speak(utter);
         // If the engine never fires onstart within 3s, it silently stalled —
@@ -558,22 +564,42 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
         setTimeout(function () {
           if (!started) {
             if (!isRetry) {
-              attemptSpeak(text, wasListening, true);
+              attemptSpeak(text, true);
               return;
             }
-            finish();
+            drainSpeechQueue();
           }
         }, 3000);
       }
 
       function speak(text) {
         if (!ttsCheckbox.checked || !text) return;
-        var wasListening = listening;
-        if (wasListening) {
-          pausedForSpeech = true;
-          try { recognition.stop(); } catch (e) {}
+        // Pause the mic once, for the whole burst of queued speech — not
+        // per item — so it doesn't flicker on/off between items that arrive
+        // close together.
+        if (!speaking && speechQueue.length === 0) {
+          queueWasListening = listening;
+          if (queueWasListening) {
+            pausedForSpeech = true;
+            try { recognition.stop(); } catch (e) {}
+          }
         }
-        attemptSpeak(text, wasListening, false);
+        speechQueue.push(text);
+        if (!speaking) drainSpeechQueue();
+      }
+
+      function drainSpeechQueue() {
+        if (speechQueue.length === 0) {
+          speaking = false;
+          if (queueWasListening) {
+            queueWasListening = false;
+            pausedForSpeech = false;
+            try { recognition.start(); } catch (e) {}
+          }
+          return;
+        }
+        speaking = true;
+        attemptSpeak(speechQueue.shift(), false);
       }
 
       try {

@@ -125,10 +125,19 @@ RUN chmod +x /opt/harness/entrypoint.sh
 # Web Speech API) served in --web mode via ttyd's -I/--index flag.
 COPY web/voice-index.html /opt/harness/voice-index.html
 
-# Voice relay: a Stop hook posts Claude's response text to a local HTTP+SSE
-# server, which the browser page subscribes to and speaks aloud.
+# Voice relay: a MessageDisplay hook posts each assistant text segment to a
+# local HTTP+SSE server as it's produced, which the browser page subscribes
+# to and speaks aloud step-by-step. PreToolUse and PermissionRequest hooks
+# fill the gap for content that never reaches assistant text at all
+# (AskUserQuestion/ExitPlanMode prompts, permission dialogs); Stop makes the
+# whole turn replayable via "repeat that" — see README's "Reading responses
+# aloud" section.
 COPY scripts/voice_relay.js /opt/harness/voice_relay.js
+COPY scripts/voice_common.js /opt/harness/voice_common.js
 COPY scripts/voice_hook.js /opt/harness/voice_hook.js
+COPY scripts/voice_message_hook.js /opt/harness/voice_message_hook.js
+COPY scripts/voice_pretool_hook.js /opt/harness/voice_pretool_hook.js
+COPY scripts/voice_permission_hook.js /opt/harness/voice_permission_hook.js
 COPY scripts/ensure_voice_hook.js /opt/harness/ensure_voice_hook.js
 
 # Entrypoint runs as root to install the CA cert, then drops to 'claude'
