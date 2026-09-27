@@ -177,6 +177,43 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
       return;
     }
 
+    // ── Audio cues for voice actions ──────────────────────────────────────
+    // Short, clearly audible tones (unlike the ultrasonic keepalive above)
+    // that confirm mic-driven state changes without needing to look at the
+    // screen — the whole point of going hands-free. `cueContext` is created
+    // and resumed from the mic button's click handler (a real user gesture)
+    // so autoplay policy doesn't silently swallow the first cue.
+    var cueContext = null;
+    function ensureCueContext() {
+      if (!cueContext) {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) cueContext = new Ctx();
+      }
+      if (cueContext && cueContext.state === 'suspended') cueContext.resume();
+    }
+    function playCue(freqs, stepMs) {
+      if (!cueContext) return; // never unlocked (mic never started) — skip rather than throw
+      var stepDur = stepMs / 1000;
+      freqs.forEach(function (freq, i) {
+        var osc = cueContext.createOscillator();
+        var gain = cueContext.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        var start = cueContext.currentTime + i * stepDur;
+        var end = start + stepDur;
+        gain.gain.setValueAtTime(0, start); // fade in/out avoids a click at each tone's edges
+        gain.gain.linearRampToValueAtTime(0.2, start + 0.01);
+        gain.gain.linearRampToValueAtTime(0, end);
+        osc.connect(gain);
+        gain.connect(cueContext.destination);
+        osc.start(start);
+        osc.stop(end);
+      });
+    }
+    function playWakeCue() { playCue([880], 90); } // single beep: capture started
+    function playSendCue() { playCue([660, 990], 80); } // rising chime: command sent
+    function playDiscardCue() { playCue([440, 220], 90); } // falling chime: capture cleared
+
     function getTerminalTextarea() {
       return document.querySelector('.xterm-helper-textarea') || document.querySelector('textarea');
     }
@@ -313,12 +350,14 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
         buffer = '';
         workingText = wakeMatch.text.slice(wakeMatch.index + wakeMatch.length);
         showStatus('Heard wake word — capturing command… say "' + STOP_WORD + '" to send it');
+        playWakeCue();
       }
 
       var discardMatch = findPhraseAcrossAlternatives(result, DISCARD_SYNONYMS);
       if (discardMatch) {
         buffer = '';
         showStatus('Discarded — still capturing… say your command, then "' + STOP_WORD + '"');
+        playDiscardCue();
         return;
       }
 
@@ -352,6 +391,7 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
         pasteIntoTerminal(command);
         setTimeout(pressEnterInTerminal, 50); // separate real keypress — see pressEnterInTerminal()
         showStatus('Sent: "' + command + '"', 3000);
+        playSendCue();
       } else {
         showStatus('Heard "' + STOP_WORD + '" with no command captured', 2500);
       }
@@ -566,6 +606,7 @@ body.harness-voice-banner-shown #harness-voice-status{top:128px}
       btn.classList.add('listening');
       showStatus(modeCheckbox.checked ? 'Armed — say "' + WAKE_WORD + '" to start a command' : 'Listening...');
       startKeepalive(); // clicking the mic button is itself a user gesture — a reliable point to unblock playback
+      ensureCueContext(); // same gesture also unlocks the Web Audio context used for wake/send/discard cues
       try {
         recognition.start();
       } catch (e) {
